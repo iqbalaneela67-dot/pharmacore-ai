@@ -1,4 +1,5 @@
 /* eslint-disable */
+/* eslint-disable */
 import React, { useEffect, useRef } from 'react';
 import { Chart, registerables } from 'chart.js';
 import { getMedStatus, formatPKR } from '../data/db';
@@ -115,3 +116,4 @@ export default function Reports({ db }) {
     </div>
   );
 }
+
