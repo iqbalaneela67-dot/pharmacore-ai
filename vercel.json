@@ -1,1 +1,12 @@
-{"buildCommand":"npm run build","outputDirectory":"build","installCommand":"npm install"}
+﻿{
+  "version": 2,
+  "builds": [
+    {
+      "src": "public/pharmacore-project/package.json",
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "build"
+      }
+    }
+  ]
+}
