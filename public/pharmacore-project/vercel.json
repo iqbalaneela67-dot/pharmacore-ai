@@ -1,1 +1,5 @@
-{"buildCommand":"npm run build","outputDirectory":"build","installCommand":"npm install"}
+﻿{
+  "buildCommand": "cd public/pharmacore-project && DISABLE_ESLINT_PLUGIN=true npm run build",
+  "outputDirectory": "public/pharmacore-project/build",
+  "installCommand": "cd public/pharmacore-project && npm install"
+}
