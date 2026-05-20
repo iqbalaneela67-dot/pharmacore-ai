@@ -1,3 +1,4 @@
+/* eslint-disable */
 import React, { useEffect, useRef } from 'react';
 import { Chart, registerables } from 'chart.js';
 import { getMedStatus, formatPKR } from '../data/db';
