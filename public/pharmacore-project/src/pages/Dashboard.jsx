@@ -5,503 +5,499 @@ import { getMedStatus, formatPKR } from '../data/db';
 import { StatusBadge } from '../components/ui';
 Chart.register(...registerables);
 
-// ── Animated counter hook ──────────────────────────────────────────────────
-function useCountUp(target, duration = 1200) {
+function useCountUp(target, duration = 1400) {
   const [val, setVal] = useState(0);
   useEffect(() => {
-    let start = 0;
-    const step = target / (duration / 16);
-    const timer = setInterval(() => {
-      start += step;
-      if (start >= target) { setVal(target); clearInterval(timer); }
-      else setVal(Math.floor(start));
-    }, 16);
-    return () => clearInterval(timer);
-  }, [target, duration]);
+    let raf, start = null;
+    const abs = Math.abs(target);
+    const run = ts => {
+      if (!start) start = ts;
+      const p = Math.min((ts - start) / duration, 1);
+      const e = 1 - Math.pow(1 - p, 4);
+      setVal(target < 0 ? -Math.floor(e * abs) : Math.floor(e * abs));
+      if (p < 1) raf = requestAnimationFrame(run);
+      else setVal(target);
+    };
+    raf = requestAnimationFrame(run);
+    return () => cancelAnimationFrame(raf);
+  }, [target]);
   return val;
 }
 
-// ── Sparkline mini-chart ───────────────────────────────────────────────────
-function Sparkline({ data, color }) {
-  const canvasRef = useRef(null);
-  const instanceRef = useRef(null);
-  useEffect(() => {
-    if (instanceRef.current) instanceRef.current.destroy();
-    instanceRef.current = new Chart(canvasRef.current, {
-      type: 'line',
-      data: {
-        labels: data.map((_, i) => i),
-        datasets: [{ data, borderColor: color, borderWidth: 2, tension: 0.4, fill: true,
-          backgroundColor: color + '18', pointRadius: 0 }],
-      },
-      options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { enabled: false } },
-        scales: { x: { display: false }, y: { display: false } } },
-    });
-    return () => instanceRef.current?.destroy();
-  }, [data, color]);
-  return <canvas ref={canvasRef} />;
+function useClock() {
+  const [t, setT] = useState(new Date());
+  useEffect(() => { const i = setInterval(() => setT(new Date()), 1000); return () => clearInterval(i); }, []);
+  return t;
 }
 
-// ── KPI Card ───────────────────────────────────────────────────────────────
-function KPICard({ label, rawValue, formatted, sub, subClass, icon, color, sparkData, trend, index }) {
+/* ── KPI CARD ── */
+function KPICard({ label, rawValue, prefix = '', sub, subType, icon, accent, trend, index }) {
   const animated = useCountUp(rawValue || 0);
-  const displayVal = rawValue !== undefined
-    ? (formatted ? formatted.replace(/[\d,]+/, animated.toLocaleString()) : animated.toLocaleString())
-    : formatted;
-
+  const isNeg = rawValue < 0;
+  const display = `${prefix}${Math.abs(animated).toLocaleString('en-PK')}`;
   return (
-    <div className="kpi-card" style={{ '--accent': color, animationDelay: `${index * 80}ms` }}>
-      <div className="kpi-top">
-        <div className="kpi-icon" style={{ background: color + '18', color }}>{icon}</div>
+    <div className="kpi" style={{ '--a': accent, animationDelay: `${index * 60}ms` }}>
+      <div className="kpi-top-bar" />
+      <div className="kpi-glow" />
+      <div className="kpi-row1">
+        <span className="kpi-icon">{icon}</span>
         {trend !== undefined && (
-          <span className={`kpi-trend ${trend >= 0 ? 'up' : 'down'}`}>
-            {trend >= 0 ? '↑' : '↓'} {Math.abs(trend)}%
+          <span className={`kpi-trend ${trend >= 0 ? 'tr-up' : 'tr-dn'}`}>
+            {trend >= 0 ? '▲' : '▼'} {Math.abs(trend)}%
           </span>
         )}
       </div>
-      <div className="kpi-value">{displayVal}</div>
+      <div className={`kpi-value ${isNeg ? 'kv-red' : ''}`}>{isNeg ? '−' : ''}{display}</div>
       <div className="kpi-label">{label}</div>
-      {sub && <div className={`kpi-sub ${subClass || ''}`}>{sub}</div>}
-      {sparkData && <div className="kpi-spark"><Sparkline data={sparkData} color={color} /></div>}
+      {sub && <div className={`kpi-sub ks-${subType || 'mute'}`}>{sub}</div>}
     </div>
   );
 }
 
-// ── AI Insight pill ────────────────────────────────────────────────────────
-function AIPill({ text, type }) {
-  const colors = { warning: '#f59e0b', danger: '#ef4444', success: '#10b981', info: '#3b82f6' };
+/* ── INSIGHT CHIP ── */
+function Chip({ icon, text, type, delay }) {
   return (
-    <div className="ai-pill" style={{ '--c': colors[type] || colors.info }}>
-      <span className="ai-dot" />
-      <span>{text}</span>
+    <div className={`chip chip-${type}`} style={{ animationDelay: `${delay}ms` }}>
+      <span>{icon}</span><span>{text}</span>
     </div>
   );
 }
 
-// ── Main Dashboard ─────────────────────────────────────────────────────────
+/* ── MAIN ── */
 export default function Dashboard({ db }) {
-  const salesChartRef = useRef(null);
-  const catChartRef = useRef(null);
-  const salesInstance = useRef(null);
-  const catInstance = useRef(null);
-  const [activeTab, setActiveTab] = useState('overview');
-  const [timeRange, setTimeRange] = useState('7d');
+  const salesRef  = useRef(null);
+  const catRef    = useRef(null);
+  const salesInst = useRef(null);
+  const catInst   = useRef(null);
+  const [range, setRange] = useState('7d');
+  const clock = useClock();
 
-  // ── Computed metrics ──────────────────────────────────────────────────
-  const totalSales    = useMemo(() => db.sales.reduce((a, s) => a + s.total, 0), [db]);
-  const todaySales    = useMemo(() => db.sales.filter(s => s.date === new Date().toISOString().split('T')[0]).reduce((a, s) => a + s.total, 0), [db]);
-  const totalInv      = useMemo(() => db.medicines.reduce((a, m) => a + m.qty * m.mrp, 0), [db]);
-  const lowStock      = useMemo(() => db.medicines.filter(m => getMedStatus(m) === 'Low Stock').length, [db]);
-  const expired       = useMemo(() => db.medicines.filter(m => getMedStatus(m) === 'Expired').length, [db]);
-  const expiringSoon  = useMemo(() => db.medicines.filter(m => getMedStatus(m) === 'Expiring Soon').length, [db]);
-  const totalPurchases = useMemo(() => db.purchases.reduce((a, p) => a + p.total, 0), [db]);
-  const profit        = useMemo(() => totalSales - totalPurchases, [totalSales, totalPurchases]);
-  const margin        = useMemo(() => totalSales ? Math.round((profit / totalSales) * 100) : 0, [profit, totalSales]);
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
 
-  // ── Spark data (simulated weekly trend) ──────────────────────────────
-  const salesSpark    = [320, 450, 280, 600, 540, 710, todaySales || 580];
-  const invSpark      = [90000, 92000, 88000, 95000, totalInv * 0.9, totalInv * 0.95, totalInv];
-  const purchSpark    = [800, 600, 1200, 400, 900, 500, totalPurchases / 7];
-  const profitSpark   = salesSpark.map((s, i) => s - (purchSpark[i] || 0));
+  const todaySales   = useMemo(() => db.sales.filter(s => s.date === todayStr).reduce((a, s) => a + s.total, 0), [db, todayStr]);
+  const totalSales   = useMemo(() => db.sales.reduce((a, s) => a + s.total, 0), [db]);
+  const totalPurch   = useMemo(() => db.purchases.reduce((a, p) => a + p.total, 0), [db]);
+  const totalInv     = useMemo(() => db.medicines.reduce((a, m) => a + m.qty * m.mrp, 0), [db]);
+  const profit       = useMemo(() => totalSales - totalPurch, [totalSales, totalPurch]);
+  const margin       = useMemo(() => totalSales > 0 ? +((profit / totalSales) * 100).toFixed(1) : 0, [profit, totalSales]);
+  const avgSale      = useMemo(() => db.sales.length ? Math.round(totalSales / db.sales.length) : 0, [db, totalSales]);
+  const lowStock     = useMemo(() => db.medicines.filter(m => getMedStatus(m) === 'Low Stock').length, [db]);
+  const expired      = useMemo(() => db.medicines.filter(m => getMedStatus(m) === 'Expired').length, [db]);
+  const expiringSoon = useMemo(() => db.medicines.filter(m => getMedStatus(m) === 'Expiring Soon').length, [db]);
+  const pendingPO    = useMemo(() => db.purchases.filter(p => p.status === 'Pending').length, [db]);
+  const receivedPO   = useMemo(() => db.purchases.filter(p => p.status === 'Received').length, [db]);
+  const todayTxns    = useMemo(() => db.sales.filter(s => s.date === todayStr).length, [db, todayStr]);
 
-  // ── AI insights ───────────────────────────────────────────────────────
+  const topMeds = useMemo(() => {
+    const map = {};
+    db.sales.forEach(s => { map[s.medId] = (map[s.medId] || 0) + s.total; });
+    return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 5)
+      .map(([id, rev]) => ({ med: db.medicines.find(m => m.id === +id), rev })).filter(x => x.med);
+  }, [db]);
+
+  const weeklyData = useMemo(() => {
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      const ds = d.toISOString().split('T')[0];
+      days.push({
+        lbl: d.toLocaleDateString('en-PK', { weekday: 'short' }),
+        sales: db.sales.filter(s => s.date === ds).reduce((a, s) => a + s.total, 0),
+        purchases: db.purchases.filter(p => p.date === ds).reduce((a, p) => a + p.total, 0),
+      });
+    }
+    return days;
+  }, [db]);
+
   const insights = useMemo(() => {
     const list = [];
-    if (expired > 0) list.push({ text: `${expired} expired item${expired > 1 ? 's' : ''} — remove from shelf immediately`, type: 'danger' });
-    if (expiringSoon > 0) list.push({ text: `${expiringSoon} item${expiringSoon > 1 ? 's' : ''} expiring within 30 days`, type: 'warning' });
-    if (lowStock > 0) list.push({ text: `${lowStock} medicine${lowStock > 1 ? 's' : ''} below reorder level`, type: 'warning' });
-    if (margin > 30) list.push({ text: `Profit margin at ${margin}% — healthy performance`, type: 'success' });
-    if (todaySales === 0) list.push({ text: 'No sales recorded today — check POS terminal', type: 'info' });
-    if (db.sales.length > 50) list.push({ text: `${db.sales.length} total transactions — strong volume`, type: 'success' });
-    if (list.length === 0) list.push({ text: 'All systems operating normally', type: 'success' });
+    if (expired > 0)      list.push({ icon: '🚨', text: `${expired} expired item${expired > 1 ? 's' : ''} — remove from shelf immediately`, type: 'danger' });
+    if (expiringSoon > 0) list.push({ icon: '⏳', text: `${expiringSoon} expiring within 30 days`, type: 'warning' });
+    if (lowStock > 0)     list.push({ icon: '📦', text: `${lowStock} medicine${lowStock > 1 ? 's' : ''} below reorder level`, type: 'warning' });
+    if (pendingPO > 0)    list.push({ icon: '🚚', text: `${pendingPO} purchase order${pendingPO > 1 ? 's' : ''} pending delivery`, type: 'info' });
+    if (margin > 20)      list.push({ icon: '📈', text: `Profit margin ${margin}% — healthy`, type: 'success' });
+    if (todaySales === 0) list.push({ icon: '💡', text: 'No sales recorded today — verify POS', type: 'info' });
+    if (!list.length)     list.push({ icon: '✅', text: 'All systems operating normally', type: 'success' });
     return list.slice(0, 4);
-  }, [expired, expiringSoon, lowStock, margin, todaySales, db]);
+  }, [expired, expiringSoon, lowStock, pendingPO, margin, todaySales]);
 
-  // ── Charts ────────────────────────────────────────────────────────────
   useEffect(() => {
-    if (salesInstance.current) salesInstance.current.destroy();
-    if (catInstance.current) catInstance.current.destroy();
+    if (salesInst.current) salesInst.current.destroy();
+    if (catInst.current) catInst.current.destroy();
 
-    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    salesInstance.current = new Chart(salesChartRef.current, {
+    salesInst.current = new Chart(salesRef.current, {
       type: 'bar',
       data: {
-        labels: days,
+        labels: weeklyData.map(d => d.lbl),
         datasets: [
           {
-            label: 'Sales (PKR)',
-            data: [320, 450, 280, 600, 540, 710, todaySales || 580],
-            backgroundColor: 'rgba(16,185,129,0.85)',
-            borderRadius: 6,
-            borderSkipped: false,
+            label: 'Sales',
+            data: weeklyData.map(d => d.sales),
+            backgroundColor: ctx => {
+              const g = ctx.chart.ctx.createLinearGradient(0, 0, 0, 260);
+              g.addColorStop(0, '#10b981cc'); g.addColorStop(1, '#10b98122');
+              return g;
+            },
+            borderRadius: 8, borderSkipped: false,
+            borderColor: '#10b981', borderWidth: 1,
           },
           {
-            label: 'Purchases (PKR)',
-            data: [800, 600, 1200, 400, 900, 500, totalPurchases / 7],
-            backgroundColor: 'rgba(59,130,246,0.7)',
-            borderRadius: 6,
-            borderSkipped: false,
+            label: 'Purchases',
+            data: weeklyData.map(d => d.purchases),
             type: 'line',
-            borderColor: '#3b82f6',
-            borderWidth: 2,
-            tension: 0.4,
-            fill: false,
-            pointRadius: 4,
-            pointBackgroundColor: '#3b82f6',
+            borderColor: '#60a5fa', backgroundColor: 'rgba(96,165,250,0.08)',
+            borderWidth: 2.5, tension: 0.45, fill: true,
+            pointRadius: 5, pointBackgroundColor: '#1e293b',
+            pointBorderColor: '#60a5fa', pointBorderWidth: 2.5, pointHoverRadius: 7,
           },
         ],
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
+        responsive: true, maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
         plugins: {
-          legend: { position: 'bottom', labels: { font: { size: 11, family: 'DM Sans' }, padding: 12, usePointStyle: true } },
+          legend: { position: 'bottom', labels: { color: '#64748b', font: { size: 11, family: 'Plus Jakarta Sans' }, padding: 16, usePointStyle: true } },
           tooltip: {
-            backgroundColor: '#0f172a',
-            titleFont: { size: 12 },
-            bodyFont: { size: 11 },
-            padding: 10,
-            callbacks: { label: ctx => ` PKR ${ctx.parsed.y.toLocaleString()}` },
+            backgroundColor: '#1e293b', borderColor: '#334155', borderWidth: 1,
+            titleColor: '#f1f5f9', bodyColor: '#94a3b8', padding: 12, cornerRadius: 10,
+            callbacks: { label: ctx => ` PKR ${ctx.parsed.y.toLocaleString('en-PK')}` },
           },
         },
         scales: {
-          x: { grid: { display: false }, ticks: { font: { size: 11 } } },
-          y: { grid: { color: 'rgba(148,163,184,0.08)' }, ticks: { callback: v => 'PKR ' + v, font: { size: 10 } } },
+          x: { grid: { display: false }, ticks: { color: '#475569', font: { size: 11 } } },
+          y: { grid: { color: 'rgba(255,255,255,0.04)', borderDash: [4, 4] }, ticks: { color: '#475569', font: { size: 10 }, callback: v => v === 0 ? '0' : 'PKR ' + v } },
         },
       },
     });
 
     const cats = [...new Set(db.medicines.map(m => m.category))];
-    const catQtys = cats.map(c => db.medicines.filter(m => m.category === c).reduce((a, m) => a + m.qty, 0));
-    catInstance.current = new Chart(catChartRef.current, {
+    const catData = cats.map(c => db.medicines.filter(m => m.category === c).reduce((a, m) => a + m.qty, 0));
+    catInst.current = new Chart(catRef.current, {
       type: 'doughnut',
       data: {
         labels: cats,
-        datasets: [{
-          data: catQtys,
-          backgroundColor: ['#10b981','#3b82f6','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16'],
-          borderWidth: 0,
-          hoverOffset: 8,
-        }],
+        datasets: [{ data: catData, backgroundColor: ['#10b981','#3b82f6','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899','#84cc16'], borderWidth: 3, borderColor: '#0f172a', hoverOffset: 10 }],
       },
       options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        cutout: '68%',
+        responsive: true, maintainAspectRatio: false, cutout: '72%',
         plugins: {
-          legend: { position: 'bottom', labels: { font: { size: 11, family: 'DM Sans' }, padding: 10, usePointStyle: true, pointStyleWidth: 8 } },
+          legend: { position: 'bottom', labels: { color: '#64748b', font: { size: 11, family: 'Plus Jakarta Sans' }, padding: 10, usePointStyle: true, pointStyleWidth: 8 } },
           tooltip: {
-            backgroundColor: '#0f172a',
+            backgroundColor: '#1e293b', borderColor: '#334155', borderWidth: 1,
+            titleColor: '#f1f5f9', bodyColor: '#94a3b8', cornerRadius: 10,
             callbacks: { label: ctx => ` ${ctx.label}: ${ctx.parsed} units` },
           },
         },
       },
     });
+    return () => { salesInst.current?.destroy(); catInst.current?.destroy(); };
+  }, [db, weeklyData]);
 
-    return () => { salesInstance.current?.destroy(); catInstance.current?.destroy(); };
-  }, [db, timeRange]);
-
-  const alerts = db.medicines.filter(m => getMedStatus(m) !== 'In Stock').slice(0, 8);
-  const recent = [...db.sales].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 6);
-
-  // ── Top selling medicines ──────────────────────────────────────────────
-  const topMeds = useMemo(() => {
-    const map = {};
-    db.sales.forEach(s => { map[s.medId] = (map[s.medId] || 0) + s.total; });
-    return Object.entries(map)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(([id, rev]) => ({ med: db.medicines.find(m => m.id === parseInt(id)), rev }))
-      .filter(x => x.med);
-  }, [db]);
-
-  const maxRev = topMeds[0]?.rev || 1;
+  const alerts   = db.medicines.filter(m => getMedStatus(m) !== 'In Stock')
+    .sort((a, b) => ({ Expired: 0, 'Low Stock': 1, 'Expiring Soon': 2 }[getMedStatus(a)] - { Expired: 0, 'Low Stock': 1, 'Expiring Soon': 2 }[getMedStatus(b)]))
+    .slice(0, 8);
+  const recent   = [...db.sales].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 6);
+  const maxRev   = topMeds[0]?.rev || 1;
+  const avPal    = ['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ef4444','#06b6d4'];
+  const aClr     = { Expired: '#ef4444', 'Low Stock': '#f59e0b', 'Expiring Soon': '#06b6d4' };
+  const timeStr  = clock.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
 
-        .dash-root { font-family: 'DM Sans', sans-serif; }
+        @keyframes fadeUp    { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
+        @keyframes fadeIn    { from{opacity:0} to{opacity:1} }
+        @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.3;transform:scale(1.8)} }
+        @keyframes scan-line { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
 
-        /* ── Header ── */
-        .dash-header {
-          display: flex; align-items: center; justify-content: space-between;
-          margin-bottom: 28px; flex-wrap: wrap; gap: 12px;
-        }
-        .dash-title { font-size: 22px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.4px; }
-        .dash-sub { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
-        .dash-actions { display: flex; gap: 8px; align-items: center; }
-        .time-btn {
-          padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 500;
-          cursor: pointer; border: 1px solid var(--border); background: transparent;
-          color: var(--text-secondary); transition: all .15s;
-        }
-        .time-btn.active, .time-btn:hover {
-          background: var(--brand); color: #fff; border-color: var(--brand);
-        }
-        .live-badge {
-          display: flex; align-items: center; gap: 5px;
-          background: rgba(16,185,129,0.1); color: #10b981;
-          border: 1px solid rgba(16,185,129,0.25); border-radius: 20px;
-          padding: 4px 10px; font-size: 11px; font-weight: 600;
-        }
-        .live-dot { width: 6px; height: 6px; border-radius: 50%; background: #10b981; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(1.4)} }
+        /* ── BASE ── */
+        .d { font-family:'Plus Jakarta Sans',sans-serif; color:#e2e8f0; animation:fadeIn .5s ease; }
 
-        /* ── KPI Grid ── */
-        .kpi-grid {
-          display: grid;
-          grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-          gap: 14px; margin-bottom: 24px;
-        }
-        .kpi-card {
-          background: var(--surface); border: 1px solid var(--border);
-          border-radius: 14px; padding: 18px 20px 14px;
-          position: relative; overflow: hidden;
-          animation: fadeUp .4s ease both;
-          transition: transform .2s, box-shadow .2s;
-        }
-        .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(0,0,0,.12); }
-        .kpi-card::before {
-          content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
-          background: var(--accent); border-radius: 14px 14px 0 0;
-        }
-        @keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
-        .kpi-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-        .kpi-icon { width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 17px; }
-        .kpi-trend { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 12px; }
-        .kpi-trend.up { background: rgba(16,185,129,.12); color: #10b981; }
-        .kpi-trend.down { background: rgba(239,68,68,.1); color: #ef4444; }
-        .kpi-value { font-size: 22px; font-weight: 700; color: var(--text-primary); letter-spacing: -0.5px; line-height: 1.1; }
-        .kpi-label { font-size: 12px; color: var(--text-secondary); margin-top: 3px; font-weight: 500; }
-        .kpi-sub { font-size: 11px; color: var(--text-secondary); margin-top: 4px; }
-        .kpi-sub.metric-down { color: #ef4444; }
-        .kpi-sub.metric-up { color: #10b981; }
-        .kpi-spark { height: 36px; margin-top: 10px; opacity: .7; }
+        /* ── HEADER ── */
+        .d-hdr { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:28px; flex-wrap:wrap; gap:14px; }
+        .d-hdr-title { font-size:22px; font-weight:800; color:#f8fafc; letter-spacing:-0.6px; margin:0; }
+        .d-hdr-sub   { display:flex; align-items:center; gap:10px; margin-top:4px; font-size:12px; color:#64748b; }
+        .d-clock     { font-family:'JetBrains Mono',monospace; font-size:12px; color:#10b981; background:#10b98115; border:1px solid #10b98130; padding:3px 10px; border-radius:6px; letter-spacing:.5px; }
+        .d-hdr-right { display:flex; align-items:center; gap:8px; }
+        .rng-btn { padding:6px 16px; border-radius:8px; font-size:12px; font-weight:600; cursor:pointer; border:1px solid #1e293b; background:transparent; color:#64748b; transition:all .15s; font-family:inherit; }
+        .rng-btn:hover { border-color:#10b981; color:#10b981; }
+        .rng-btn.on { background:#10b981; color:#0f172a; border-color:#10b981; font-weight:700; }
+        .live-pill { display:flex; align-items:center; gap:6px; background:#10b98115; border:1px solid #10b98135; border-radius:20px; padding:5px 13px; font-size:11px; font-weight:700; color:#10b981; }
+        .live-dot  { width:7px; height:7px; border-radius:50%; background:#10b981; animation:pulse-dot 1.6s infinite; }
 
-        /* ── AI Insights ── */
-        .ai-section { margin-bottom: 24px; }
-        .ai-header { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-        .ai-header-icon { font-size: 15px; }
-        .ai-header-text { font-size: 13px; font-weight: 600; color: var(--text-primary); }
-        .ai-pills { display: flex; flex-wrap: wrap; gap: 8px; }
-        .ai-pill {
-          display: flex; align-items: center; gap: 7px;
-          background: color-mix(in srgb, var(--c) 8%, var(--surface));
-          border: 1px solid color-mix(in srgb, var(--c) 25%, transparent);
-          border-radius: 20px; padding: 6px 12px;
-          font-size: 12px; color: var(--text-primary); font-weight: 500;
-          animation: fadeUp .4s ease both;
-        }
-        .ai-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--c); flex-shrink: 0; }
+        /* ── KPI GRID ── */
+        .kpi-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(190px,1fr)); gap:14px; margin-bottom:22px; }
 
-        /* ── Charts ── */
-        .chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
-        @media(max-width:900px){ .chart-row { grid-template-columns: 1fr; } }
+        .kpi {
+          background:linear-gradient(145deg,#1e293b,#151f2e);
+          border:1px solid #1e293b; border-radius:18px;
+          padding:20px; position:relative; overflow:hidden;
+          animation:fadeUp .5s ease both;
+          transition:transform .25s ease, box-shadow .25s ease, border-color .25s;
+        }
+        .kpi:hover { transform:translateY(-4px); border-color:var(--a); box-shadow:0 16px 40px color-mix(in srgb,var(--a) 20%,transparent); }
+        .kpi-top-bar { position:absolute; top:0; left:0; right:0; height:3px; background:var(--a); border-radius:18px 18px 0 0; }
+        .kpi-glow    { position:absolute; top:-25px; right:-25px; width:90px; height:90px; border-radius:50%; background:color-mix(in srgb,var(--a) 10%,transparent); }
+        .kpi-row1  { display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+        .kpi-icon  { width:42px; height:42px; border-radius:12px; background:color-mix(in srgb,var(--a) 15%,transparent); display:flex; align-items:center; justify-content:center; font-size:19px; }
+        .kpi-trend { font-size:11px; font-weight:700; padding:3px 8px; border-radius:12px; }
+        .tr-up { background:rgba(16,185,129,.15); color:#10b981; }
+        .tr-dn { background:rgba(239,68,68,.15);  color:#ef4444; }
+        .kpi-value { font-size:24px; font-weight:800; color:#f8fafc; letter-spacing:-0.6px; line-height:1.1; }
+        .kv-red    { color:#ef4444; }
+        .kpi-label { font-size:12px; color:#64748b; margin-top:5px; font-weight:500; }
+        .kpi-sub   { font-size:11px; margin-top:6px; font-weight:600; }
+        .ks-up   { color:#10b981; }
+        .ks-down { color:#ef4444; }
+        .ks-mute { color:#475569; }
+
+        /* ── AI ROW ── */
+        .ai-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-bottom:22px; }
+        .ai-lbl { font-size:10px; font-weight:700; color:#475569; letter-spacing:.8px; text-transform:uppercase; }
+        .chip { display:flex; align-items:center; gap:7px; padding:6px 13px; border-radius:20px; font-size:12px; font-weight:500; animation:fadeUp .4s ease both; }
+        .chip-danger  { background:rgba(239,68,68,.12);  border:1px solid rgba(239,68,68,.3);  color:#fca5a5; }
+        .chip-warning { background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.3); color:#fcd34d; }
+        .chip-success { background:rgba(16,185,129,.12); border:1px solid rgba(16,185,129,.3); color:#6ee7b7; }
+        .chip-info    { background:rgba(96,165,250,.12); border:1px solid rgba(96,165,250,.3); color:#93c5fd; }
+
+        /* ── DIVIDER ── */
+        .section-label { font-size:11px; font-weight:700; color:#334155; letter-spacing:.8px; text-transform:uppercase; margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+        .section-label::after { content:''; flex:1; height:1px; background:#1e293b; }
+
+        /* ── CHARTS ── */
+        .chart-row { display:grid; grid-template-columns:3fr 2fr; gap:14px; margin-bottom:16px; }
+        @media(max-width:900px){ .chart-row{grid-template-columns:1fr;} }
         .chart-card {
-          background: var(--surface); border: 1px solid var(--border);
-          border-radius: 14px; padding: 20px;
+          background:#0f172a; border:1px solid #1e293b; border-radius:18px;
+          padding:22px; box-shadow:0 4px 20px rgba(0,0,0,.3);
         }
-        .chart-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
-        .chart-title-text { font-size: 14px; font-weight: 600; color: var(--text-primary); }
-        .chart-badge { font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 10px; background: rgba(59,130,246,.1); color: #3b82f6; }
+        .chart-top  { display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; }
+        .chart-ttl  { font-size:13px; font-weight:700; color:#e2e8f0; }
+        .chart-tag  { font-size:10px; font-weight:600; padding:3px 9px; border-radius:6px; background:#1e293b; color:#64748b; border:1px solid #334155; }
 
-        /* ── Bottom row ── */
-        .bottom-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
-        @media(max-width:1100px){ .bottom-row { grid-template-columns: 1fr 1fr; } }
-        @media(max-width:700px){ .bottom-row { grid-template-columns: 1fr; } }
-
-        /* ── Alert list ── */
-        .alert-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; }
-        .section-title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: 14px; display: flex; align-items: center; gap: 6px; }
-        .alert-scroll { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-        .alert-scroll::-webkit-scrollbar { width: 4px; }
-        .alert-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-        .alert-row {
-          display: flex; align-items: center; gap: 10px;
-          padding: 9px 12px; border-radius: 9px;
-          background: var(--bg); border: 1px solid var(--border);
-          transition: background .15s;
+        /* ── MINI STATS ── */
+        .mini-row { display:grid; grid-template-columns:repeat(4,1fr); gap:13px; margin-bottom:18px; }
+        @media(max-width:800px){ .mini-row{grid-template-columns:repeat(2,1fr);} }
+        .mini-box {
+          background:#0f172a; border:1px solid #1e293b; border-radius:14px;
+          padding:16px; text-align:center; border-left:3px solid var(--a);
+          transition:transform .2s, box-shadow .2s;
         }
-        .alert-row:hover { background: color-mix(in srgb, var(--brand) 5%, var(--bg)); }
-        .alert-dot-sm { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-        .alert-name { font-size: 13px; font-weight: 500; color: var(--text-primary); }
-        .alert-meta { font-size: 11px; color: var(--text-secondary); margin-top: 1px; font-family: 'DM Mono', monospace; }
+        .mini-box:hover { transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,.25); }
+        .mini-val { font-size:24px; font-weight:800; color:var(--a); }
+        .mini-lbl { font-size:11px; color:#64748b; margin-top:3px; font-weight:500; }
 
-        /* ── Recent Txns ── */
-        .txn-row {
-          display: flex; align-items: center; gap: 10px; padding: 9px 0;
-          border-bottom: 1px solid var(--border);
+        /* ── BOTTOM ── */
+        .btm-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px; }
+        @media(max-width:1100px){ .btm-row{grid-template-columns:1fr 1fr;} }
+        @media(max-width:700px) { .btm-row{grid-template-columns:1fr;} }
+        .btm-card {
+          background:#0f172a; border:1px solid #1e293b; border-radius:18px;
+          padding:20px; box-shadow:0 4px 20px rgba(0,0,0,.25);
         }
-        .txn-row:last-child { border-bottom: none; }
-        .txn-avatar {
-          width: 32px; height: 32px; border-radius: 8px;
-          background: var(--brand); color: #fff;
-          display: flex; align-items: center; justify-content: center;
-          font-size: 12px; font-weight: 700; flex-shrink: 0;
+        .sec-ttl { font-size:13px; font-weight:700; color:#e2e8f0; margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+        .cnt-bub { font-size:10px; font-weight:700; padding:2px 7px; border-radius:10px; background:rgba(239,68,68,.2); color:#fca5a5; }
+
+        /* ── ALERTS ── */
+        .alert-list { display:flex; flex-direction:column; gap:7px; max-height:265px; overflow-y:auto; }
+        .alert-list::-webkit-scrollbar { width:3px; }
+        .alert-list::-webkit-scrollbar-thumb { background:#1e293b; border-radius:4px; }
+        .alert-item {
+          display:flex; align-items:center; gap:10px; padding:10px 12px;
+          border-radius:11px; background:#1e293b; border:1px solid #334155;
+          transition:background .15s, border-color .15s;
         }
-        .txn-name { font-size: 13px; font-weight: 500; color: var(--text-primary); }
-        .txn-meta { font-size: 11px; color: var(--text-secondary); margin-top: 1px; }
-        .txn-amount { font-size: 13px; font-weight: 700; color: var(--brand); margin-left: auto; white-space: nowrap; }
+        .alert-item:hover { background:#263048; border-color:#3d4f6b; }
+        .al-dot  { width:8px; height:8px; border-radius:50%; flex-shrink:0; box-shadow:0 0 6px currentColor; }
+        .al-nm   { font-size:12px; font-weight:600; color:#e2e8f0; }
+        .al-meta { font-size:10px; color:#475569; margin-top:2px; font-family:'JetBrains Mono',monospace; }
 
-        /* ── Top Medicines ── */
-        .top-med-row { display: flex; flex-direction: column; gap: 10px; }
-        .top-med-item { display: flex; flex-direction: column; gap: 4px; }
-        .top-med-head { display: flex; justify-content: space-between; align-items: center; }
-        .top-med-name { font-size: 12px; font-weight: 500; color: var(--text-primary); }
-        .top-med-rev { font-size: 12px; font-weight: 600; color: var(--brand); font-family: 'DM Mono', monospace; }
-        .top-med-bar { height: 5px; border-radius: 3px; background: var(--border); overflow: hidden; }
-        .top-med-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--brand), #3b82f6); transition: width .8s cubic-bezier(.4,0,.2,1); }
+        /* ── TRANSACTIONS ── */
+        .txn-item { display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid #1e293b; }
+        .txn-item:last-child { border:none; }
+        .txn-av   { width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:800; flex-shrink:0; color:#0f172a; }
+        .txn-nm   { font-size:12px; font-weight:600; color:#e2e8f0; }
+        .txn-meta { font-size:10px; color:#475569; margin-top:2px; font-family:'JetBrains Mono',monospace; }
+        .txn-amt  { font-size:13px; font-weight:800; color:#10b981; margin-left:auto; white-space:nowrap; font-family:'JetBrains Mono',monospace; }
 
-        /* ── Profit card ── */
-        .profit-stat { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid var(--border); }
-        .profit-stat:last-child { border-bottom: none; }
-        .profit-key { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
-        .profit-val { font-size: 13px; font-weight: 700; color: var(--text-primary); font-family: 'DM Mono', monospace; }
-        .profit-val.green { color: #10b981; }
-        .profit-val.red { color: #ef4444; }
-        .margin-ring { display: flex; align-items: center; justify-content: center; flex-direction: column; padding: 16px 0; }
-        .margin-pct { font-size: 36px; font-weight: 800; color: var(--text-primary); letter-spacing: -1px; }
-        .margin-label { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
-        .margin-bar { height: 8px; border-radius: 8px; background: var(--border); overflow: hidden; margin: 12px 0; }
-        .margin-fill { height: 100%; border-radius: 8px; background: linear-gradient(90deg,#10b981,#06b6d4); transition: width 1s ease; }
+        /* ── TOP MEDS ── */
+        .med-item { margin-bottom:12px; }
+        .med-head { display:flex; justify-content:space-between; margin-bottom:5px; }
+        .med-nm   { font-size:12px; font-weight:600; color:#cbd5e1; }
+        .med-rv   { font-size:12px; font-weight:700; color:#10b981; font-family:'JetBrains Mono',monospace; }
+        .med-trk  { height:5px; border-radius:5px; background:#1e293b; overflow:hidden; }
+        .med-fill { height:100%; border-radius:5px; background:linear-gradient(90deg,#10b981,#3b82f6); transition:width 1.2s cubic-bezier(.4,0,.2,1); }
+
+        /* ── PROFIT ── */
+        .pft-center { text-align:center; padding:14px 0 8px; }
+        .pft-big  { font-size:40px; font-weight:900; letter-spacing:-2px; font-family:'Plus Jakarta Sans',sans-serif; }
+        .pft-pos  { color:#10b981; }
+        .pft-neg  { color:#ef4444; }
+        .pft-sub  { font-size:11px; color:#475569; margin-top:3px; }
+        .pft-bar  { height:8px; border-radius:8px; background:#1e293b; overflow:hidden; margin:12px 0; }
+        .pft-fill { height:100%; border-radius:8px; transition:width 1.4s ease; }
+        .pft-row  { display:flex; justify-content:space-between; padding:9px 0; border-bottom:1px solid #1e293b; }
+        .pft-row:last-child { border:none; }
+        .pft-k    { font-size:12px; color:#64748b; font-weight:500; }
+        .pft-v    { font-size:12px; font-weight:700; font-family:'JetBrains Mono',monospace; color:#e2e8f0; }
+        .pft-v.g  { color:#10b981; }
+        .pft-v.r  { color:#ef4444; }
       `}</style>
 
-      <div className="dash-root">
-        {/* Header */}
-        <div className="dash-header">
+      <div className="d">
+
+        {/* HEADER */}
+        <div className="d-hdr">
           <div>
-            <div className="dash-title">Operations Dashboard</div>
-            <div className="dash-sub">{new Date().toLocaleDateString('en-PK', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+            <p className="d-hdr-title">Operations Dashboard</p>
+            <div className="d-hdr-sub">
+              {new Date().toLocaleDateString('en-PK', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+              <span className="d-clock">{timeStr}</span>
+            </div>
           </div>
-          <div className="dash-actions">
-            {['7d','30d','90d'].map(r => (
-              <button key={r} className={`time-btn ${timeRange === r ? 'active' : ''}`} onClick={() => setTimeRange(r)}>{r}</button>
+          <div className="d-hdr-right">
+            {['7d', '30d', '90d'].map(r => (
+              <button key={r} className={`rng-btn ${range === r ? 'on' : ''}`} onClick={() => setRange(r)}>{r}</button>
             ))}
-            <div className="live-badge"><div className="live-dot" />Live</div>
+            <div className="live-pill"><div className="live-dot" />Live</div>
           </div>
         </div>
 
-        {/* KPI Grid */}
+        {/* KPI GRID */}
         <div className="kpi-grid">
-          <KPICard index={0} label="Today's Sales" rawValue={todaySales} formatted={formatPKR(todaySales)}
-            sub="● Live tracking" subClass="metric-up" icon="💊" color="#10b981" sparkData={salesSpark} trend={12} />
-          <KPICard index={1} label="Total Revenue" rawValue={totalSales} formatted={formatPKR(totalSales)}
-            sub={`${db.sales.length} transactions`} icon="💰" color="#3b82f6" sparkData={salesSpark} trend={8} />
-          <KPICard index={2} label="Inventory Value" rawValue={totalInv} formatted={formatPKR(totalInv)}
-            sub={`${db.medicines.length} SKUs`} icon="📦" color="#8b5cf6" sparkData={invSpark} trend={-3} />
-          <KPICard index={3} label="Net Profit" rawValue={profit} formatted={formatPKR(profit)}
-            sub={`${margin}% margin`} subClass={profit >= 0 ? 'metric-up' : 'metric-down'} icon="📈" color="#f59e0b" sparkData={profitSpark} trend={margin} />
-          <KPICard index={4} label="Total Purchases" rawValue={totalPurchases} formatted={formatPKR(totalPurchases)}
-            sub={`${db.purchases.length} orders`} icon="🛒" color="#06b6d4" sparkData={purchSpark} />
-          <KPICard index={5} label="Low Stock" rawValue={lowStock} formatted={String(lowStock)}
-            sub="Needs reorder" subClass={lowStock > 0 ? 'metric-down' : ''} icon="⚠️" color={lowStock > 0 ? '#ef4444' : '#10b981'} />
+          <KPICard index={0} label="Today's Sales"   rawValue={todaySales}  prefix="PKR " sub={todaySales > 0 ? `${todayTxns} transactions today` : '● No sales yet today'} subType={todaySales > 0 ? 'up' : 'mute'} icon="💊" accent="#10b981" trend={12} />
+          <KPICard index={1} label="Total Revenue"   rawValue={totalSales}  prefix="PKR " sub={`${db.sales.length} total transactions`} subType="mute" icon="💰" accent="#3b82f6" trend={8} />
+          <KPICard index={2} label="Inventory Value" rawValue={totalInv}    prefix="PKR " sub={`${db.medicines.length} medicines`} subType="mute" icon="📦" accent="#8b5cf6" trend={-2} />
+          <KPICard index={3} label="Net Profit"      rawValue={profit}      prefix="PKR " sub={`${margin}% margin`} subType={profit >= 0 ? 'up' : 'down'} icon="📈" accent={profit >= 0 ? '#10b981' : '#ef4444'} trend={+margin.toFixed(0)} />
+          <KPICard index={4} label="Total Purchases" rawValue={totalPurch}  prefix="PKR " sub={`${db.purchases.length} orders`} subType="mute" icon="🛒" accent="#f59e0b" />
+          <KPICard index={5} label="Avg Sale Value"  rawValue={avgSale}     prefix="PKR " sub="Per transaction" subType="mute" icon="🧾" accent="#06b6d4" />
+          <KPICard index={6} label="Low Stock"       rawValue={lowStock}    sub={lowStock > 0 ? 'Reorder required' : 'All stocked'} subType={lowStock > 0 ? 'down' : 'up'} icon="⚠️" accent={lowStock > 0 ? '#f59e0b' : '#10b981'} />
+          <KPICard index={7} label="Expired Items"   rawValue={expired}     sub={expired > 0 ? 'Remove immediately' : 'No expired'} subType={expired > 0 ? 'down' : 'up'} icon="🗑️" accent={expired > 0 ? '#ef4444' : '#10b981'} />
         </div>
 
-        {/* AI Insights */}
-        <div className="ai-section">
-          <div className="ai-header">
-            <span className="ai-header-icon">🤖</span>
-            <span className="ai-header-text">AI Insights</span>
-          </div>
-          <div className="ai-pills">
-            {insights.map((ins, i) => <AIPill key={i} text={ins.text} type={ins.type} />)}
-          </div>
+        {/* AI INSIGHTS */}
+        <div className="ai-row">
+          <span className="ai-lbl">🤖 AI Insights</span>
+          {insights.map((ins, i) => <Chip key={i} {...ins} delay={i * 55} />)}
         </div>
 
-        {/* Charts */}
+        {/* CHARTS */}
+        <div className="section-label">Analytics</div>
         <div className="chart-row">
           <div className="chart-card">
-            <div className="chart-header">
-              <span className="chart-title-text">Sales vs Purchases — Last 7 Days</span>
-              <span className="chart-badge">PKR</span>
+            <div className="chart-top">
+              <span className="chart-ttl">📊 Sales vs Purchases — Last 7 Days</span>
+              <span className="chart-tag">Live · PKR</span>
             </div>
-            <div style={{ position: 'relative', height: 230 }}><canvas ref={salesChartRef} /></div>
+            <div style={{ position: 'relative', height: 240 }}><canvas ref={salesRef} /></div>
           </div>
           <div className="chart-card">
-            <div className="chart-header">
-              <span className="chart-title-text">Stock Distribution by Category</span>
-              <span className="chart-badge">{db.medicines.length} items</span>
+            <div className="chart-top">
+              <span className="chart-ttl">🗂️ Stock by Category</span>
+              <span className="chart-tag">{db.medicines.length} SKUs</span>
             </div>
-            <div style={{ position: 'relative', height: 230 }}><canvas ref={catChartRef} /></div>
+            <div style={{ position: 'relative', height: 240 }}><canvas ref={catRef} /></div>
           </div>
         </div>
 
-        {/* Bottom Row */}
-        <div className="bottom-row">
-          {/* Stock Alerts */}
-          <div className="alert-card">
-            <div className="section-title">⚠️ Stock Alerts <span style={{fontSize:11,background:'rgba(239,68,68,.1)',color:'#ef4444',padding:'2px 7px',borderRadius:10,fontWeight:600}}>{alerts.length}</span></div>
-            <div className="alert-scroll">
+        {/* MINI STATS */}
+        <div className="mini-row">
+          {[
+            { val: db.sales.length,    lbl: 'Total Invoices',  a: '#10b981' },
+            { val: receivedPO,         lbl: 'POs Received',    a: '#3b82f6' },
+            { val: pendingPO,          lbl: 'POs Pending',     a: '#f59e0b' },
+            { val: db.medicines.length,lbl: 'Total Medicines', a: '#8b5cf6' },
+          ].map((s, i) => (
+            <div key={i} className="mini-box" style={{ '--a': s.a }}>
+              <div className="mini-val">{s.val}</div>
+              <div className="mini-lbl">{s.lbl}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* BOTTOM ROW */}
+        <div className="section-label">Details</div>
+        <div className="btm-row">
+
+          {/* Alerts */}
+          <div className="btm-card">
+            <div className="sec-ttl">
+              ⚠️ Stock Alerts
+              {alerts.length > 0 && <span className="cnt-bub">{alerts.length}</span>}
+            </div>
+            <div className="alert-list">
               {alerts.length ? alerts.map(m => {
                 const s = getMedStatus(m);
                 return (
-                  <div className="alert-row" key={m.id}>
-                    <div className="alert-dot-sm" style={{ background: s === 'Expired' ? '#ef4444' : s === 'Low Stock' ? '#f59e0b' : '#06b6d4' }} />
+                  <div className="alert-item" key={m.id}>
+                    <div className="al-dot" style={{ background: aClr[s] || '#64748b', color: aClr[s] }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div className="alert-name">{m.name}</div>
-                      <div className="alert-meta">Qty: {m.qty} · Exp: {m.expiry}</div>
+                      <div className="al-nm">{m.name}</div>
+                      <div className="al-meta">Qty:{m.qty} · Exp:{m.expiry} · Min:{m.minStock}</div>
                     </div>
                     <StatusBadge status={s} />
                   </div>
                 );
-              }) : <div style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13, padding: '20px 0' }}>✅ All stock healthy</div>}
+              }) : (
+                <div style={{ textAlign: 'center', color: '#475569', fontSize: 13, padding: '24px 0' }}>✅ All stock healthy</div>
+              )}
             </div>
           </div>
 
-          {/* Recent Transactions */}
-          <div className="alert-card">
-            <div className="section-title">🧾 Recent Transactions</div>
-            {recent.map(s => {
+          {/* Transactions */}
+          <div className="btm-card">
+            <div className="sec-ttl">🧾 Recent Transactions</div>
+            {recent.map((s, i) => {
               const med = db.medicines.find(m => m.id === s.medId);
-              const initials = s.patient.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+              const ini = s.patient.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
               return (
-                <div className="txn-row" key={s.id}>
-                  <div className="txn-avatar">{initials}</div>
+                <div className="txn-item" key={s.id}>
+                  <div className="txn-av" style={{ background: avPal[i % avPal.length] }}>{ini}</div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="txn-name">{s.patient}</div>
+                    <div className="txn-nm">{s.patient}</div>
                     <div className="txn-meta">{s.invoice} · {med?.name || '—'} · {s.date}</div>
                   </div>
-                  <span className="txn-amount">{formatPKR(s.total)}</span>
+                  <span className="txn-amt">{formatPKR(s.total)}</span>
                 </div>
               );
             })}
+            {!recent.length && <div style={{ color: '#475569', fontSize: 13, textAlign: 'center', padding: '24px 0' }}>No transactions yet</div>}
           </div>
 
-          {/* Top Medicines + Profit */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div className="alert-card" style={{ flex: 1 }}>
-              <div className="section-title">🏆 Top Medicines by Revenue</div>
-              <div className="top-med-row">
-                {topMeds.map(({ med, rev }, i) => (
-                  <div className="top-med-item" key={med.id}>
-                    <div className="top-med-head">
-                      <span className="top-med-name">{i + 1}. {med.name}</span>
-                      <span className="top-med-rev">{formatPKR(rev)}</span>
-                    </div>
-                    <div className="top-med-bar">
-                      <div className="top-med-fill" style={{ width: `${(rev / maxRev) * 100}%` }} />
-                    </div>
+          {/* Right Column */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="btm-card">
+              <div className="sec-ttl">🏆 Top Medicines by Revenue</div>
+              {topMeds.length ? topMeds.map(({ med, rev }, i) => (
+                <div className="med-item" key={med.id}>
+                  <div className="med-head">
+                    <span className="med-nm">{i + 1}. {med.name}</span>
+                    <span className="med-rv">{formatPKR(rev)}</span>
                   </div>
-                ))}
-                {topMeds.length === 0 && <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>No sales data yet</div>}
-              </div>
+                  <div className="med-trk">
+                    <div className="med-fill" style={{ width: `${(rev / maxRev) * 100}%` }} />
+                  </div>
+                </div>
+              )) : <div style={{ color: '#475569', fontSize: 13 }}>No sales data yet</div>}
             </div>
 
-            <div className="alert-card">
-              <div className="section-title">📊 Profitability</div>
-              <div className="margin-ring">
-                <div className="margin-pct">{margin}%</div>
-                <div className="margin-label">Net Profit Margin</div>
+            <div className="btm-card">
+              <div className="sec-ttl">📊 Profitability</div>
+              <div className="pft-center">
+                <div className={`pft-big ${profit >= 0 ? 'pft-pos' : 'pft-neg'}`}>{margin}%</div>
+                <div className="pft-sub">Net Profit Margin</div>
               </div>
-              <div className="margin-bar">
-                <div className="margin-fill" style={{ width: `${Math.min(margin, 100)}%` }} />
+              <div className="pft-bar">
+                <div className="pft-fill" style={{
+                  width: `${Math.min(Math.abs(margin), 100)}%`,
+                  background: profit >= 0 ? 'linear-gradient(90deg,#10b981,#3b82f6)' : 'linear-gradient(90deg,#ef4444,#f59e0b)'
+                }} />
               </div>
-              <div className="profit-stat"><span className="profit-key">Revenue</span><span className="profit-val">{formatPKR(totalSales)}</span></div>
-              <div className="profit-stat"><span className="profit-key">Cost</span><span className="profit-val red">{formatPKR(totalPurchases)}</span></div>
-              <div className="profit-stat"><span className="profit-key">Profit</span><span className={`profit-val ${profit >= 0 ? 'green' : 'red'}`}>{formatPKR(profit)}</span></div>
+              <div className="pft-row"><span className="pft-k">Revenue</span><span className="pft-v">{formatPKR(totalSales)}</span></div>
+              <div className="pft-row"><span className="pft-k">Purchases</span><span className="pft-v r">{formatPKR(totalPurch)}</span></div>
+              <div className="pft-row"><span className="pft-k">Net Profit</span><span className={`pft-v ${profit >= 0 ? 'g' : 'r'}`}>{formatPKR(profit)}</span></div>
             </div>
           </div>
         </div>
@@ -509,4 +505,3 @@ export default function Dashboard({ db }) {
     </>
   );
 }
-
