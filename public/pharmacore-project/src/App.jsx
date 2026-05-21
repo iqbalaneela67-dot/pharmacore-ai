@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import './index.css';
 import { initialDB, getMedStatus } from './data/db';
 import Sidebar from './components/Sidebar';
@@ -14,10 +14,21 @@ import ScannerModal from './components/ScannerModal';
 
 export default function App() {
   const [page, setPage] = useState('dashboard');
-  const [db, setDb] = useState(() => JSON.parse(JSON.stringify(initialDB)));
+  const [db, setDb] = useState(() => {
+    try {
+      const saved = localStorage.getItem('pharmacore_db');
+      return saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(initialDB));
+    } catch {
+      return JSON.parse(JSON.stringify(initialDB));
+    }
+  });
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannerTarget, setScannerTarget] = useState('');
   const [scannedMed, setScannedMed] = useState(null);
+
+  useEffect(() => {
+    localStorage.setItem('pharmacore_db', JSON.stringify(db));
+  }, [db]);
 
   const updateDB = useCallback((updater) => {
     setDb(prev => {
