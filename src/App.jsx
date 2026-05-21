@@ -15,7 +15,7 @@ import Billing from './pages/Billing';
 import Returns from './pages/Returns';
 import Reports from './pages/Reports';
 
-import Login from './pages/Login'; // ✅ ADDED
+import Login from './Login'; // ✅ FIXED
 import ScannerModal from './components/ScannerModal';
 
 // ─── Loading Screen ─────────────────────────
@@ -82,7 +82,8 @@ export default function App() {
     }
   }, []);
 
-  const handleLogin = () => {
+  const handleLogin = (user) => {
+    if (user) localStorage.setItem("pharmacore_user", JSON.stringify(user));
     localStorage.setItem("auth", "true");
     setIsLoggedIn(true);
   };
