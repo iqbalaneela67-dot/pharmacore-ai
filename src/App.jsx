@@ -1,14 +1,8 @@
-<<<<<<< HEAD
 /* eslint-disable */
 import React, { useState } from 'react';
 import './index.css';
 import { getMedStatus } from './data/db';
 import { useDatabase } from './hooks/useDatabase';
-=======
-import React, { useState, useCallback } from 'react';
-import './index.css';
-import { initialDB, getMedStatus } from './data/db';
->>>>>>> 4d01c826a8df3d882adbdfd00bbfa164c3a139a3
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import Dashboard from './pages/Dashboard';
@@ -20,7 +14,6 @@ import Returns from './pages/Returns';
 import Reports from './pages/Reports';
 import ScannerModal from './components/ScannerModal';
 
-<<<<<<< HEAD
 // ─── Loading Screen ───────────────────────────────────────────
 function LoadingScreen() {
   return (
@@ -80,29 +73,14 @@ const PAGES = {
 // ─── App ──────────────────────────────────────────────────────
 export default function App() {
   const [page, setPage] = useState('dashboard');
-=======
-export default function App() {
-  const [page, setPage] = useState('dashboard');
-  const [db, setDb] = useState(() => JSON.parse(JSON.stringify(initialDB)));
->>>>>>> 4d01c826a8df3d882adbdfd00bbfa164c3a139a3
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannerTarget, setScannerTarget] = useState('');
   const [scannedMed, setScannedMed] = useState(null);
 
-<<<<<<< HEAD
   const { db, loading, error, updateDB, refetch } = useDatabase();
 
   if (loading) return <LoadingScreen />;
   if (error)   return <ErrorScreen error={error} onRetry={refetch} />;
-=======
-  const updateDB = useCallback((updater) => {
-    setDb(prev => {
-      const next = JSON.parse(JSON.stringify(prev));
-      updater(next);
-      return next;
-    });
-  }, []);
->>>>>>> 4d01c826a8df3d882adbdfd00bbfa164c3a139a3
 
   const lowStockCount = db.medicines.filter(m => {
     const s = getMedStatus(m);
@@ -115,12 +93,7 @@ export default function App() {
     setScannerOpen(true);
   };
 
-<<<<<<< HEAD
   const PageComponent = PAGES[page] || Dashboard;
-=======
-  const pages = { dashboard: Dashboard, inventory: Inventory, sales: Sales, purchases: Purchases, billing: Billing, returns: Returns, reports: Reports };
-  const PageComponent = pages[page] || Dashboard;
->>>>>>> 4d01c826a8df3d882adbdfd00bbfa164c3a139a3
 
   return (
     <div className="app">
@@ -151,22 +124,11 @@ export default function App() {
           onClose={() => setScannerOpen(false)}
           onScanned={(med) => {
             setScannedMed(med);
-<<<<<<< HEAD
             setScannerOpen(false);
             if (scannerTarget === 'billing') setPage('billing');
-=======
-            if (scannerTarget === 'billing') {
-              setScannerOpen(false);
-              setPage('billing');
-            }
->>>>>>> 4d01c826a8df3d882adbdfd00bbfa164c3a139a3
           }}
         />
       )}
     </div>
   );
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> 4d01c826a8df3d882adbdfd00bbfa164c3a139a3
