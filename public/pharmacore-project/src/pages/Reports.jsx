@@ -1,8 +1,5 @@
-<<<<<<< HEAD
 /* eslint-disable */
 /* eslint-disable */
-=======
->>>>>>> 4d01c826a8df3d882adbdfd00bbfa164c3a139a3
 import React, { useEffect, useRef } from 'react';
 import { Chart, registerables } from 'chart.js';
 import { getMedStatus, formatPKR } from '../data/db';
@@ -119,7 +116,4 @@ export default function Reports({ db }) {
     </div>
   );
 }
-<<<<<<< HEAD
 
-=======
->>>>>>> 4d01c826a8df3d882adbdfd00bbfa164c3a139a3

@@ -1,8 +1,5 @@
-<<<<<<< HEAD
 /* eslint-disable */
 /* eslint-disable */
-=======
->>>>>>> 4d01c826a8df3d882adbdfd00bbfa164c3a139a3
 import React, { useState, useEffect } from 'react';
 import { today, padId, formatPKR, getMedStatus, PAYMENT_MODES } from '../data/db';
 import { Empty } from '../components/ui';
@@ -218,7 +215,4 @@ export default function Billing({ db, updateDB, openScanner, scannedMed, setScan
     </div>
   );
 }
-<<<<<<< HEAD
 
-=======
->>>>>>> 4d01c826a8df3d882adbdfd00bbfa164c3a139a3
