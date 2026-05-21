@@ -11,16 +11,18 @@ import Billing from './pages/Billing';
 import Returns from './pages/Returns';
 import Reports from './pages/Reports';
 import ScannerModal from './components/ScannerModal';
+import Login from './Login';
 
 export default function App() {
+  const [user, setUser] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('pharmacore_user')); } catch { return null; }
+  });
   const [page, setPage] = useState('dashboard');
   const [db, setDb] = useState(() => {
     try {
       const saved = localStorage.getItem('pharmacore_db');
       return saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(initialDB));
-    } catch {
-      return JSON.parse(JSON.stringify(initialDB));
-    }
+    } catch { return JSON.parse(JSON.stringify(initialDB)); }
   });
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannerTarget, setScannerTarget] = useState('');
@@ -37,6 +39,13 @@ export default function App() {
       return next;
     });
   }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('pharmacore_user');
+    setUser(null);
+  };
+
+  if (!user) return <Login onLogin={setUser} />;
 
   const lowStockCount = db.medicines.filter(m => {
     const s = getMedStatus(m);
@@ -62,6 +71,8 @@ export default function App() {
           updateDB={updateDB}
           openScanner={openScanner}
           lowStockCount={lowStockCount}
+          user={user}
+          onLogout={handleLogout}
         />
         <div className="content">
           <PageComponent
