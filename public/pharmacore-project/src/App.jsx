@@ -1,6 +1,8 @@
-import React, { useState, useCallback, useEffect } from 'react';
+/* eslint-disable */
+import React, { useState, useCallback } from 'react';
 import './index.css';
-import { initialDB, getMedStatus } from './data/db';
+import { getMedStatus } from './data/db';
+import { useDatabase } from './hooks/useDatabase';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import Dashboard from './pages/Dashboard';
@@ -11,41 +13,66 @@ import Billing from './pages/Billing';
 import Returns from './pages/Returns';
 import Reports from './pages/Reports';
 import ScannerModal from './components/ScannerModal';
-import Login from './Login';
+
+// Loading screen
+function LoadingScreen() {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', height: '100vh',
+      background: '#0a0f1e', color: '#10b981', fontFamily: 'sans-serif',
+      gap: 16,
+    }}>
+      <div style={{ fontSize: 32 }}>💊</div>
+      <div style={{ fontSize: 18, fontWeight: 700 }}>PharmaCore AI</div>
+      <div style={{ fontSize: 13, color: '#475569' }}>Loading live data...</div>
+      <div style={{
+        width: 200, height: 3, background: '#1e293b',
+        borderRadius: 4, overflow: 'hidden', marginTop: 8,
+      }}>
+        <div style={{
+          height: '100%', background: '#10b981', borderRadius: 4,
+          animation: 'loadbar 1.5s ease infinite',
+          width: '60%',
+        }} />
+      </div>
+      <style>{`
+        @keyframes loadbar {
+          0%   { transform: translateX(-100%); }
+          100% { transform: translateX(300%); }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// Error screen
+function ErrorScreen({ error, onRetry }) {
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', height: '100vh',
+      background: '#0a0f1e', color: '#f1f5f9', fontFamily: 'sans-serif', gap: 12,
+    }}>
+      <div style={{ fontSize: 32 }}>⚠️</div>
+      <div style={{ fontSize: 16, fontWeight: 700 }}>Database Connection Failed</div>
+      <div style={{ fontSize: 12, color: '#64748b', maxWidth: 300, textAlign: 'center' }}>{error}</div>
+      <button onClick={onRetry} style={{
+        marginTop: 12, padding: '8px 20px', background: '#10b981',
+        color: '#0f172a', border: 'none', borderRadius: 8,
+        fontWeight: 700, cursor: 'pointer', fontSize: 13,
+      }}>Retry</button>
+    </div>
+  );
+}
 
 export default function App() {
-  const [user, setUser] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('pharmacore_user')); } catch { return null; }
-  });
   const [page, setPage] = useState('dashboard');
-  const [db, setDb] = useState(() => {
-    try {
-      const saved = localStorage.getItem('pharmacore_db');
-      return saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(initialDB));
-    } catch { return JSON.parse(JSON.stringify(initialDB)); }
-  });
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannerTarget, setScannerTarget] = useState('');
   const [scannedMed, setScannedMed] = useState(null);
 
-  useEffect(() => {
-    localStorage.setItem('pharmacore_db', JSON.stringify(db));
-  }, [db]);
-
-  const updateDB = useCallback((updater) => {
-    setDb(prev => {
-      const next = JSON.parse(JSON.stringify(prev));
-      updater(next);
-      return next;
-    });
-  }, []);
-
-  const handleLogout = () => {
-    localStorage.removeItem('pharmacore_user');
-    setUser(null);
-  };
-
-  if (!user) return <Login onLogin={setUser} />;
+  const { db, loading, error, updateDB, refetch } = useDatabase();
 
   const lowStockCount = db.medicines.filter(m => {
     const s = getMedStatus(m);
@@ -58,7 +85,13 @@ export default function App() {
     setScannerOpen(true);
   };
 
-  const pages = { dashboard: Dashboard, inventory: Inventory, sales: Sales, purchases: Purchases, billing: Billing, returns: Returns, reports: Reports };
+  if (loading) return <LoadingScreen />;
+  if (error)   return <ErrorScreen error={error} onRetry={refetch} />;
+
+  const pages = {
+    dashboard: Dashboard, inventory: Inventory, sales: Sales,
+    purchases: Purchases, billing: Billing, returns: Returns, reports: Reports,
+  };
   const PageComponent = pages[page] || Dashboard;
 
   return (
@@ -66,29 +99,21 @@ export default function App() {
       <Sidebar page={page} setPage={setPage} />
       <div className="main">
         <Topbar
-          page={page}
-          db={db}
-          updateDB={updateDB}
-          openScanner={openScanner}
-          lowStockCount={lowStockCount}
-          user={user}
-          onLogout={handleLogout}
+          page={page} db={db} updateDB={updateDB}
+          openScanner={openScanner} lowStockCount={lowStockCount}
         />
         <div className="content">
           <PageComponent
-            db={db}
-            updateDB={updateDB}
+            db={db} updateDB={updateDB}
             openScanner={openScanner}
             scannedMed={scannedMed}
             setScannedMed={setScannedMed}
           />
         </div>
       </div>
-
       {scannerOpen && (
         <ScannerModal
-          db={db}
-          target={scannerTarget}
+          db={db} target={scannerTarget}
           onClose={() => setScannerOpen(false)}
           onScanned={(med) => {
             setScannedMed(med);
