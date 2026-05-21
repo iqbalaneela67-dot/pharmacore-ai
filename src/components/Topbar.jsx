@@ -1,7 +1,4 @@
-<<<<<<< HEAD
 /* eslint-disable */
-=======
->>>>>>> 4d01c826a8df3d882adbdfd00bbfa164c3a139a3
 import React, { useState } from 'react';
 import MedicineModal from './MedicineModal';
 import SaleModal from './SaleModal';
@@ -17,18 +14,11 @@ const PAGE_TITLES = {
   reports: 'Reports & Analytics',
 };
 
-<<<<<<< HEAD
 export default function Topbar({ page, db, updateDB, openScanner, lowStockCount, user, onLogout }) {
   const [medModal, setMedModal] = useState(false);
   const [saleModal, setSaleModal] = useState(false);
   const [purModal, setPurModal] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
-=======
-export default function Topbar({ page, db, updateDB, openScanner, lowStockCount }) {
-  const [medModal, setMedModal] = useState(false);
-  const [saleModal, setSaleModal] = useState(false);
-  const [purModal, setPurModal] = useState(false);
->>>>>>> 4d01c826a8df3d882adbdfd00bbfa164c3a139a3
 
   const handleAdd = () => {
     if (page === 'inventory') setMedModal(true);
@@ -38,7 +28,6 @@ export default function Topbar({ page, db, updateDB, openScanner, lowStockCount 
 
   const showAdd = ['inventory', 'sales', 'purchases'].includes(page);
   const addLabel = { inventory: 'Add Medicine', sales: 'New Sale', purchases: 'New Purchase' };
-<<<<<<< HEAD
   const roleColor = { Admin: '#10b981', Pharmacist: '#3b82f6', Cashier: '#f59e0b' };
 
   return (
@@ -102,14 +91,6 @@ export default function Topbar({ page, db, updateDB, openScanner, lowStockCount 
           <span className="topbar-title">{PAGE_TITLES[page]}</span>
           <span className="live-badge">● Live</span>
         </div>
-=======
-
-  return (
-    <>
-      <div className="topbar">
-        <span className="topbar-title">{PAGE_TITLES[page]}</span>
-        <span className="live-badge">● Live</span>
->>>>>>> 4d01c826a8df3d882adbdfd00bbfa164c3a139a3
         <div style={{ flex: 1 }} />
 
         <div className="notif-wrap">
@@ -119,17 +100,12 @@ export default function Topbar({ page, db, updateDB, openScanner, lowStockCount 
           {lowStockCount > 0 && <span className="notif-dot" title={`${lowStockCount} alerts`} />}
         </div>
 
-<<<<<<< HEAD
         <button className="btn btn-sm tb-hide-mobile" onClick={() => openScanner('')}>
-=======
-        <button className="btn btn-sm" onClick={() => openScanner('')}>
->>>>>>> 4d01c826a8df3d882adbdfd00bbfa164c3a139a3
           <i className="ti ti-barcode" aria-hidden="true" /> Scanner
         </button>
 
         {showAdd && (
           <button className="btn btn-sm btn-primary" onClick={handleAdd}>
-<<<<<<< HEAD
             <i className="ti ti-plus" aria-hidden="true" /> <span className="tb-hide-mobile">{addLabel[page]}</span><span style={{display:'none'}} className="tb-show-mobile">+</span>
           </button>
         )}
@@ -160,11 +136,6 @@ export default function Topbar({ page, db, updateDB, openScanner, lowStockCount 
             )}
           </div>
         )}
-=======
-            <i className="ti ti-plus" aria-hidden="true" /> {addLabel[page]}
-          </button>
-        )}
->>>>>>> 4d01c826a8df3d882adbdfd00bbfa164c3a139a3
       </div>
 
       {medModal && <MedicineModal db={db} updateDB={updateDB} onClose={() => setMedModal(false)} />}
@@ -172,8 +143,4 @@ export default function Topbar({ page, db, updateDB, openScanner, lowStockCount 
       {purModal && <PurchaseModal db={db} updateDB={updateDB} onClose={() => setPurModal(false)} />}
     </>
   );
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> 4d01c826a8df3d882adbdfd00bbfa164c3a139a3
