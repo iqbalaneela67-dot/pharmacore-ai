@@ -1,10 +1,12 @@
 /* eslint-disable */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './index.css';
 import { getMedStatus } from './data/db';
 import { useDatabase } from './hooks/useDatabase';
+
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
+
 import Dashboard from './pages/Dashboard';
 import Inventory from './pages/Inventory';
 import Sales from './pages/Sales';
@@ -12,9 +14,11 @@ import Purchases from './pages/Purchases';
 import Billing from './pages/Billing';
 import Returns from './pages/Returns';
 import Reports from './pages/Reports';
+
+import Login from './pages/Login'; // ✅ ADDED
 import ScannerModal from './components/ScannerModal';
 
-// ─── Loading Screen ───────────────────────────────────────────
+// ─── Loading Screen ─────────────────────────
 function LoadingScreen() {
   return (
     <div style={{
@@ -23,43 +27,37 @@ function LoadingScreen() {
       background: '#0a0f1e', color: '#10b981', fontFamily: 'sans-serif', gap: 16,
     }}>
       <div style={{ fontSize: 40 }}>💊</div>
-      <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: 1 }}>PharmaCore AI</div>
+      <div style={{ fontSize: 20, fontWeight: 700 }}>PharmaCore AI</div>
       <div style={{ fontSize: 13, color: '#475569' }}>Loading live data...</div>
-      <div style={{
-        width: 220, height: 3, background: '#1e293b',
-        borderRadius: 4, overflow: 'hidden', marginTop: 8,
-      }}>
-        <div style={{
-          height: '100%', background: '#10b981', borderRadius: 4,
-          animation: 'loadbar 1.5s ease infinite', width: '60%',
-        }} />
-      </div>
-      <style>{`@keyframes loadbar { 0%{transform:translateX(-100%)} 100%{transform:translateX(300%)} }`}</style>
     </div>
   );
 }
 
-// ─── Error Screen ─────────────────────────────────────────────
+// ─── Error Screen ─────────────────────────
 function ErrorScreen({ error, onRetry }) {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center',
       justifyContent: 'center', height: '100vh',
-      background: '#0a0f1e', color: '#f1f5f9', fontFamily: 'sans-serif', gap: 12,
+      background: '#0a0f1e', color: '#f1f5f9',
     }}>
       <div style={{ fontSize: 40 }}>⚠️</div>
-      <div style={{ fontSize: 16, fontWeight: 700 }}>Database Connection Failed</div>
-      <div style={{ fontSize: 12, color: '#64748b', maxWidth: 320, textAlign: 'center' }}>{error}</div>
+      <div style={{ fontWeight: 700 }}>Database Error</div>
+      <div style={{ fontSize: 12, color: '#64748b', maxWidth: 320, textAlign: 'center' }}>
+        {error}
+      </div>
       <button onClick={onRetry} style={{
-        marginTop: 12, padding: '10px 24px', background: '#10b981',
-        color: '#0f172a', border: 'none', borderRadius: 8,
-        fontWeight: 700, cursor: 'pointer', fontSize: 13,
-      }}>🔄 Retry</button>
+        marginTop: 12, padding: '10px 24px',
+        background: '#10b981', border: 'none',
+        borderRadius: 8, cursor: 'pointer'
+      }}>
+        Retry
+      </button>
     </div>
   );
 }
 
-// ─── Page Map ─────────────────────────────────────────────────
+// ─── Pages Map ─────────────────────────
 const PAGES = {
   dashboard: Dashboard,
   inventory: Inventory,
@@ -70,8 +68,31 @@ const PAGES = {
   reports: Reports,
 };
 
-// ─── App ──────────────────────────────────────────────────────
+// ─── App ───────────────────────────────
 export default function App() {
+
+  // 🔐 AUTH STATE (ADDED)
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  // restore login from localStorage
+  useEffect(() => {
+    const auth = localStorage.getItem("auth");
+    if (auth === "true") {
+      setIsLoggedIn(true);
+    }
+  }, []);
+
+  const handleLogin = () => {
+    localStorage.setItem("auth", "true");
+    setIsLoggedIn(true);
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("auth");
+    setIsLoggedIn(false);
+  };
+
+  // existing states
   const [page, setPage] = useState('dashboard');
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scannerTarget, setScannerTarget] = useState('');
@@ -79,8 +100,13 @@ export default function App() {
 
   const { db, loading, error, updateDB, refetch } = useDatabase();
 
+  // 🔴 LOGIN GATE (IMPORTANT)
+  if (!isLoggedIn) {
+    return <Login onLogin={handleLogin} />;
+  }
+
   if (loading) return <LoadingScreen />;
-  if (error)   return <ErrorScreen error={error} onRetry={refetch} />;
+  if (error) return <ErrorScreen error={error} onRetry={refetch} />;
 
   const lowStockCount = db.medicines.filter(m => {
     const s = getMedStatus(m);
@@ -97,8 +123,15 @@ export default function App() {
 
   return (
     <div className="app">
-      <Sidebar page={page} setPage={setPage} />
+
+      <Sidebar
+        page={page}
+        setPage={setPage}
+        onLogout={handleLogout}   // optional logout button
+      />
+
       <div className="main">
+
         <Topbar
           page={page}
           db={db}
@@ -106,6 +139,7 @@ export default function App() {
           openScanner={openScanner}
           lowStockCount={lowStockCount}
         />
+
         <div className="content">
           <PageComponent
             db={db}
@@ -115,6 +149,7 @@ export default function App() {
             setScannedMed={setScannedMed}
           />
         </div>
+
       </div>
 
       {scannerOpen && (
@@ -129,6 +164,7 @@ export default function App() {
           }}
         />
       )}
+
     </div>
   );
 }
