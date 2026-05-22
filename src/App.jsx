@@ -77,7 +77,7 @@ export default function App() {
   // restore login from localStorage
   useEffect(() => {
     const auth = localStorage.getItem("auth");
-    if (auth === "true") {
+    const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem("auth") === "true");
       setIsLoggedIn(true);
     }
   }, []);
