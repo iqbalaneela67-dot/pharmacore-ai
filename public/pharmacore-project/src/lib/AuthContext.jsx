@@ -8,7 +8,7 @@ export const ROLE_PERMISSIONS = {
   admin: {
     label: 'Admin',
     color: '#7F77DD',
-    pages: ['dashboard', 'inventory', 'sales', 'purchases', 'billing', 'returns', 'reports', 'scanner', 'users'],
+    pages: ['dashboard', 'inventory','prescriptions', 'sales', 'purchases', 'billing', 'returns', 'reports', 'scanner', 'users'],
     canEdit: true,
     canDelete: true,
     canManageUsers: true,
@@ -16,7 +16,7 @@ export const ROLE_PERMISSIONS = {
   pharmacist: {
     label: 'Pharmacist',
     color: '#1D9E75',
-    pages: ['dashboard', 'inventory', 'sales', 'purchases', 'billing', 'returns', 'reports', 'scanner'],
+    pages: ['dashboard', 'inventory','prescriptions', 'sales', 'purchases', 'billing', 'returns', 'reports', 'scanner'],
     canEdit: true,
     canDelete: false,
     canManageUsers: false,
@@ -24,7 +24,7 @@ export const ROLE_PERMISSIONS = {
   cashier: {
     label: 'Cashier',
     color: '#BA7517',
-    pages: ['dashboard', 'billing', 'sales', 'scanner'],
+    pages: ['dashboard', 'billing', 'sales','prescriptions', 'scanner'],
     canEdit: false,
     canDelete: false,
     canManageUsers: false,

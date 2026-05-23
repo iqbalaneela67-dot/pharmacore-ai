@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { AuthProvider, useAuth } from './lib/AuthContext'
+import Prescriptions from './pages/Prescriptions'
 import LoginPage from './components/LoginPage'
 import { UserPanel, ProtectedRoute } from './components/ProtectedRoute'
 
@@ -24,25 +25,26 @@ const Icons = {
 }
 
 const MENU_ITEMS = [
-  { id: 'dashboard', label: 'Dashboard'  },
-  { id: 'inventory', label: 'Inventory'  },
-  { id: 'billing',   label: 'Billing'    },
-  { id: 'sales',     label: 'Sales'      },
-  { id: 'purchases', label: 'Purchases'  },
-  { id: 'returns',   label: 'Returns'    },
-  { id: 'reports',   label: 'Reports'    },
-  { id: 'users',     label: 'Users'      },
+  { id: 'dashboard',     label: 'Dashboard'     },
+  { id: 'inventory',     label: 'Inventory'     },
+  { id: 'prescriptions', label: 'Prescriptions' },
+  { id: 'billing',       label: 'Billing'       },
+  { id: 'sales',         label: 'Sales'         },
+  { id: 'purchases',     label: 'Purchases'     },
+  { id: 'returns',       label: 'Returns'       },
+  { id: 'reports',       label: 'Reports'       },
+  { id: 'users',         label: 'Users'         },
 ]
-
 const PAGE_COMPONENTS = {
-  dashboard: Dashboard,
-  inventory: Inventory,
-  billing:   Billing,
-  sales:     Sales,
-  purchases: Purchases,
-  returns:   Returns,
-  reports:   Reports,
-  users:     UsersPage,
+  dashboard:     Dashboard,
+  inventory:     Inventory,
+  prescriptions: Prescriptions,
+  billing:       Billing,
+  sales:         Sales,
+  purchases:     Purchases,
+  returns:       Returns,
+  reports:       Reports,
+  users:         UsersPage,
 }
 
 function AppShell() {
