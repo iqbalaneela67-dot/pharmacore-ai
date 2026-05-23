@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import MedicineModal from './MedicineModal';
 import SaleModal from './SaleModal';
 import PurchaseModal from './PurchaseModal';
+import { AlertBell, ToastContainer } from './AlertSystem';
 
 const PAGE_TITLES = {
   dashboard: 'Dashboard',
@@ -86,6 +87,8 @@ export default function Topbar({ page, db, updateDB, openScanner, lowStockCount,
         }
       `}</style>
 
+      <ToastContainer />
+
       <div className="topbar">
         <div className="tb-title-wrap">
           <span className="topbar-title">{PAGE_TITLES[page]}</span>
@@ -93,12 +96,8 @@ export default function Topbar({ page, db, updateDB, openScanner, lowStockCount,
         </div>
         <div style={{ flex: 1 }} />
 
-        <div className="notif-wrap">
-          <button className="btn btn-sm btn-icon" aria-label="Alerts">
-            <i className="ti ti-bell" aria-hidden="true" />
-          </button>
-          {lowStockCount > 0 && <span className="notif-dot" title={`${lowStockCount} alerts`} />}
-        </div>
+        {/* Alert Bell */}
+        {db && <AlertBell db={db} />}
 
         <button className="btn btn-sm tb-hide-mobile" onClick={() => openScanner('')}>
           <i className="ti ti-barcode" aria-hidden="true" /> Scanner
@@ -106,7 +105,8 @@ export default function Topbar({ page, db, updateDB, openScanner, lowStockCount,
 
         {showAdd && (
           <button className="btn btn-sm btn-primary" onClick={handleAdd}>
-            <i className="ti ti-plus" aria-hidden="true" /> <span className="tb-hide-mobile">{addLabel[page]}</span><span style={{display:'none'}} className="tb-show-mobile">+</span>
+            <i className="ti ti-plus" aria-hidden="true" />
+            <span className="tb-hide-mobile">{addLabel[page]}</span>
           </button>
         )}
 
@@ -129,7 +129,7 @@ export default function Topbar({ page, db, updateDB, openScanner, lowStockCount,
                   <div className="user-dd-name">{user.name}</div>
                   <div className="user-dd-role">{user.role} · PharmaCore AI</div>
                 </div>
-                <button className="user-dd-btn" onClick={() => { setShowUserMenu(false); onLogout(); }}>
+                <button className="user-dd-btn" onClick={() => { setShowUserMenu(false); onLogout && onLogout(); }}>
                   🚪 Sign Out
                 </button>
               </div>
