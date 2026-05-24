@@ -2,8 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../lib/AuthContext';
+import useStore from '../lib/store';
 
-// ─── Helpers ─────────────────────────────────────────────────
 function today() { return new Date().toISOString().split('T')[0]; }
 function expiryDate() {
   const d = new Date();
@@ -25,9 +25,9 @@ const STATUS_COLORS = {
   'Cancelled':            { bg: '#f5f5f5', color: '#888',    border: '#ddd' },
 };
 
-// ─── Main Component ───────────────────────────────────────────
 export default function Prescriptions() {
   const { user } = useAuth();
+  const { medicines: storeMeds, prescriptions: storeRxs, fetchMedicines, fetchPrescriptions, invalidate } = useStore();
   const [prescriptions, setPrescriptions] = useState([]);
   const [medicines, setMedicines]         = useState([]);
   const [loading, setLoading]             = useState(true);
@@ -38,7 +38,6 @@ export default function Prescriptions() {
   const [saving, setSaving]              = useState(false);
   const [error, setError]                = useState('');
 
-  // Form state
   const [form, setForm] = useState({
     rx_number: genRxNumber(),
     patient_name: '', patient_phone: '', patient_age: '',
@@ -49,18 +48,16 @@ export default function Prescriptions() {
   const [rxItems, setRxItems] = useState([]);
   const [itemForm, setItemForm] = useState({ medicine_id: '', medicine_name: '', dosage: '', frequency: 'Twice daily', duration: '7 days', quantity: 1, notes: '' });
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => {
+    fetchMedicines();
+    fetchPrescriptions();
+  }, []);
 
-  async function fetchAll() {
-    setLoading(true);
-    const [{ data: rxs }, { data: meds }] = await Promise.all([
-      supabase.from('prescriptions').select('*, prescription_items(*)').order('created_at', { ascending: false }),
-      supabase.from('medicines').select('id, name, mrp').order('name'),
-    ]);
-    setPrescriptions(rxs || []);
-    setMedicines(meds || []);
+  useEffect(() => {
+    setPrescriptions(storeRxs);
+    setMedicines(storeMeds);
     setLoading(false);
-  }
+  }, [storeRxs, storeMeds]);
 
   function openNew() {
     setForm({ rx_number: genRxNumber(), patient_name: '', patient_phone: '', patient_age: '', doctor_name: '', doctor_license: '', diagnosis: '', is_controlled: false, status: 'Active', issue_date: today(), expiry_date: expiryDate(), notes: '' });
@@ -109,7 +106,8 @@ export default function Prescriptions() {
       const { error: itemsErr } = await supabase.from('prescription_items').insert(items);
       if (itemsErr) throw itemsErr;
 
-      await fetchAll();
+      invalidate('prescriptions');
+      await fetchPrescriptions(true);
       setShowModal(false);
     } catch (err) {
       setError(err.message);
@@ -120,10 +118,10 @@ export default function Prescriptions() {
 
   async function updateStatus(id, status) {
     await supabase.from('prescriptions').update({ status }).eq('id', id);
-    fetchAll();
+    invalidate('prescriptions');
+    await fetchPrescriptions(true);
   }
 
-  // Filters
   const filtered = prescriptions.filter(rx => {
     const matchSearch = rx.patient_name.toLowerCase().includes(search.toLowerCase()) ||
                         rx.doctor_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -132,7 +130,6 @@ export default function Prescriptions() {
     return matchSearch && matchStatus;
   });
 
-  // Stats
   const stats = {
     total:      prescriptions.length,
     active:     prescriptions.filter(r => r.status === 'Active').length,
@@ -142,7 +139,6 @@ export default function Prescriptions() {
 
   return (
     <div style={pg.root}>
-      {/* Header */}
       <div style={pg.header}>
         <div>
           <h1 style={pg.title}>Prescription Management</h1>
@@ -154,7 +150,6 @@ export default function Prescriptions() {
         </button>
       </div>
 
-      {/* Stats */}
       <div style={pg.statsRow}>
         {[
           { label: 'Total Prescriptions', value: stats.total,      color: '#3b82f6', icon: '📋' },
@@ -170,7 +165,6 @@ export default function Prescriptions() {
         ))}
       </div>
 
-      {/* Filters */}
       <div style={pg.filterRow}>
         <div style={pg.searchWrap}>
           <svg style={pg.searchIcon} width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="currentColor" strokeWidth="1.5"/><path d="M21 21l-4.35-4.35" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
@@ -185,7 +179,6 @@ export default function Prescriptions() {
         </div>
       </div>
 
-      {/* Table */}
       <div style={pg.tableWrap}>
         {loading ? (
           <div style={pg.loading}>Loading prescriptions...</div>
@@ -222,9 +215,7 @@ export default function Prescriptions() {
                       {rx.doctor_license && <div style={{ fontSize: 11, color: '#aaa' }}>Lic: {rx.doctor_license}</div>}
                     </td>
                     <td style={pg.td}><span style={{ fontSize: 12, color: '#666' }}>{rx.diagnosis || '—'}</span></td>
-                    <td style={pg.td}>
-                      <span style={pg.medCount}>{rx.prescription_items?.length || 0} medicines</span>
-                    </td>
+                    <td style={pg.td}><span style={pg.medCount}>{rx.prescription_items?.length || 0} medicines</span></td>
                     <td style={pg.td}><span style={{ fontSize: 12, color: '#666' }}>{rx.issue_date}</span></td>
                     <td style={pg.td}>
                       <span style={{ fontSize: 12, color: isExpired ? '#ef4444' : '#666', fontWeight: isExpired ? 700 : 400 }}>
@@ -261,7 +252,6 @@ export default function Prescriptions() {
         )}
       </div>
 
-      {/* New Prescription Modal */}
       {showModal && (
         <div style={pg.overlay} onClick={e => e.target === e.currentTarget && setShowModal(false)}>
           <div style={pg.modal}>
@@ -269,159 +259,69 @@ export default function Prescriptions() {
               <h2 style={pg.modalTitle}>New Prescription</h2>
               <button onClick={() => setShowModal(false)} style={pg.closeBtn}>✕</button>
             </div>
-
             {error && <div style={pg.errorBox}>⚠️ {error}</div>}
-
-            {/* Rx Info */}
             <div style={pg.section}>
               <div style={pg.sectionTitle}>📋 Prescription Info</div>
               <div style={pg.formGrid2}>
-                <div style={pg.field}>
-                  <label style={pg.label}>Rx Number</label>
-                  <input style={pg.input} value={form.rx_number} onChange={e => setForm(f => ({...f, rx_number: e.target.value}))} />
-                </div>
-                <div style={pg.field}>
-                  <label style={pg.label}>Issue Date</label>
-                  <input style={pg.input} type="date" value={form.issue_date} onChange={e => setForm(f => ({...f, issue_date: e.target.value}))} />
-                </div>
-                <div style={pg.field}>
-                  <label style={pg.label}>Expiry Date</label>
-                  <input style={pg.input} type="date" value={form.expiry_date} onChange={e => setForm(f => ({...f, expiry_date: e.target.value}))} />
-                </div>
-                <div style={pg.field}>
-                  <label style={pg.label}>Status</label>
-                  <select style={pg.input} value={form.status} onChange={e => setForm(f => ({...f, status: e.target.value}))}>
-                    {['Active', 'Dispensed', 'Partially Dispensed', 'Expired', 'Cancelled'].map(s => <option key={s}>{s}</option>)}
-                  </select>
-                </div>
+                <div style={pg.field}><label style={pg.label}>Rx Number</label><input style={pg.input} value={form.rx_number} onChange={e => setForm(f => ({...f, rx_number: e.target.value}))} /></div>
+                <div style={pg.field}><label style={pg.label}>Issue Date</label><input style={pg.input} type="date" value={form.issue_date} onChange={e => setForm(f => ({...f, issue_date: e.target.value}))} /></div>
+                <div style={pg.field}><label style={pg.label}>Expiry Date</label><input style={pg.input} type="date" value={form.expiry_date} onChange={e => setForm(f => ({...f, expiry_date: e.target.value}))} /></div>
+                <div style={pg.field}><label style={pg.label}>Status</label><select style={pg.input} value={form.status} onChange={e => setForm(f => ({...f, status: e.target.value}))}>{['Active', 'Dispensed', 'Partially Dispensed', 'Expired', 'Cancelled'].map(s => <option key={s}>{s}</option>)}</select></div>
               </div>
-              <div style={pg.field}>
-                <label style={pg.checkLabel}>
-                  <input type="checkbox" checked={form.is_controlled} onChange={e => setForm(f => ({...f, is_controlled: e.target.checked}))} />
-                  <span style={{ color: '#ef4444', fontWeight: 700 }}>⚠️ Contains Controlled / Narcotic Drugs</span>
-                </label>
-              </div>
+              <div style={pg.field}><label style={pg.checkLabel}><input type="checkbox" checked={form.is_controlled} onChange={e => setForm(f => ({...f, is_controlled: e.target.checked}))} /><span style={{ color: '#ef4444', fontWeight: 700 }}>⚠️ Contains Controlled / Narcotic Drugs</span></label></div>
             </div>
-
-            {/* Patient Info */}
             <div style={pg.section}>
               <div style={pg.sectionTitle}>👤 Patient Information</div>
               <div style={pg.formGrid2}>
-                <div style={pg.field}>
-                  <label style={pg.label}>Patient Name *</label>
-                  <input style={pg.input} value={form.patient_name} onChange={e => setForm(f => ({...f, patient_name: e.target.value}))} placeholder="Full name" />
-                </div>
-                <div style={pg.field}>
-                  <label style={pg.label}>Phone</label>
-                  <input style={pg.input} value={form.patient_phone} onChange={e => setForm(f => ({...f, patient_phone: e.target.value}))} placeholder="03001234567" />
-                </div>
-                <div style={pg.field}>
-                  <label style={pg.label}>Age</label>
-                  <input style={pg.input} type="number" value={form.patient_age} onChange={e => setForm(f => ({...f, patient_age: e.target.value}))} placeholder="Years" />
-                </div>
+                <div style={pg.field}><label style={pg.label}>Patient Name *</label><input style={pg.input} value={form.patient_name} onChange={e => setForm(f => ({...f, patient_name: e.target.value}))} placeholder="Full name" /></div>
+                <div style={pg.field}><label style={pg.label}>Phone</label><input style={pg.input} value={form.patient_phone} onChange={e => setForm(f => ({...f, patient_phone: e.target.value}))} placeholder="03001234567" /></div>
+                <div style={pg.field}><label style={pg.label}>Age</label><input style={pg.input} type="number" value={form.patient_age} onChange={e => setForm(f => ({...f, patient_age: e.target.value}))} placeholder="Years" /></div>
               </div>
             </div>
-
-            {/* Doctor Info */}
             <div style={pg.section}>
               <div style={pg.sectionTitle}>👨‍⚕️ Doctor Information</div>
               <div style={pg.formGrid2}>
-                <div style={pg.field}>
-                  <label style={pg.label}>Doctor Name *</label>
-                  <input style={pg.input} value={form.doctor_name} onChange={e => setForm(f => ({...f, doctor_name: e.target.value}))} placeholder="Dr. Ahmed Ali" />
-                </div>
-                <div style={pg.field}>
-                  <label style={pg.label}>License / PMDC No.</label>
-                  <input style={pg.input} value={form.doctor_license} onChange={e => setForm(f => ({...f, doctor_license: e.target.value}))} placeholder="PMDC-12345" />
-                </div>
-                <div style={{ ...pg.field, gridColumn: '1 / -1' }}>
-                  <label style={pg.label}>Diagnosis</label>
-                  <input style={pg.input} value={form.diagnosis} onChange={e => setForm(f => ({...f, diagnosis: e.target.value}))} placeholder="e.g. Hypertension, Diabetes Type 2" />
-                </div>
+                <div style={pg.field}><label style={pg.label}>Doctor Name *</label><input style={pg.input} value={form.doctor_name} onChange={e => setForm(f => ({...f, doctor_name: e.target.value}))} placeholder="Dr. Ahmed Ali" /></div>
+                <div style={pg.field}><label style={pg.label}>License / PMDC No.</label><input style={pg.input} value={form.doctor_license} onChange={e => setForm(f => ({...f, doctor_license: e.target.value}))} placeholder="PMDC-12345" /></div>
+                <div style={{ ...pg.field, gridColumn: '1 / -1' }}><label style={pg.label}>Diagnosis</label><input style={pg.input} value={form.diagnosis} onChange={e => setForm(f => ({...f, diagnosis: e.target.value}))} placeholder="e.g. Hypertension, Diabetes Type 2" /></div>
               </div>
             </div>
-
-            {/* Medicines */}
             <div style={pg.section}>
               <div style={pg.sectionTitle}>💊 Prescribed Medicines</div>
-
-              {/* Add item form */}
               <div style={pg.itemFormGrid}>
-                <div style={pg.field}>
-                  <label style={pg.label}>Medicine</label>
-                  <select style={pg.input} value={itemForm.medicine_id} onChange={handleMedSelect}>
-                    <option value="">Select medicine...</option>
-                    {medicines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-                  </select>
-                </div>
-                <div style={pg.field}>
-                  <label style={pg.label}>Dosage</label>
-                  <input style={pg.input} value={itemForm.dosage} onChange={e => setItemForm(f => ({...f, dosage: e.target.value}))} placeholder="e.g. 500mg" />
-                </div>
-                <div style={pg.field}>
-                  <label style={pg.label}>Frequency</label>
-                  <select style={pg.input} value={itemForm.frequency} onChange={e => setItemForm(f => ({...f, frequency: e.target.value}))}>
-                    {FREQUENCIES.map(f => <option key={f}>{f}</option>)}
-                  </select>
-                </div>
-                <div style={pg.field}>
-                  <label style={pg.label}>Duration</label>
-                  <select style={pg.input} value={itemForm.duration} onChange={e => setItemForm(f => ({...f, duration: e.target.value}))}>
-                    {DURATIONS.map(d => <option key={d}>{d}</option>)}
-                  </select>
-                </div>
-                <div style={pg.field}>
-                  <label style={pg.label}>Qty</label>
-                  <input style={pg.input} type="number" min="1" value={itemForm.quantity} onChange={e => setItemForm(f => ({...f, quantity: e.target.value}))} />
-                </div>
-                <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-                  <button onClick={addRxItem} style={pg.addItemBtn}>+ Add</button>
-                </div>
+                <div style={pg.field}><label style={pg.label}>Medicine</label><select style={pg.input} value={itemForm.medicine_id} onChange={handleMedSelect}><option value="">Select medicine...</option>{medicines.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}</select></div>
+                <div style={pg.field}><label style={pg.label}>Dosage</label><input style={pg.input} value={itemForm.dosage} onChange={e => setItemForm(f => ({...f, dosage: e.target.value}))} placeholder="e.g. 500mg" /></div>
+                <div style={pg.field}><label style={pg.label}>Frequency</label><select style={pg.input} value={itemForm.frequency} onChange={e => setItemForm(f => ({...f, frequency: e.target.value}))}>{FREQUENCIES.map(f => <option key={f}>{f}</option>)}</select></div>
+                <div style={pg.field}><label style={pg.label}>Duration</label><select style={pg.input} value={itemForm.duration} onChange={e => setItemForm(f => ({...f, duration: e.target.value}))}>{DURATIONS.map(d => <option key={d}>{d}</option>)}</select></div>
+                <div style={pg.field}><label style={pg.label}>Qty</label><input style={pg.input} type="number" min="1" value={itemForm.quantity} onChange={e => setItemForm(f => ({...f, quantity: e.target.value}))} /></div>
+                <div style={{ display: 'flex', alignItems: 'flex-end' }}><button onClick={addRxItem} style={pg.addItemBtn}>+ Add</button></div>
               </div>
-
-              {/* Items list */}
               {rxItems.length > 0 && (
                 <div style={pg.itemsList}>
                   {rxItems.map((item, i) => (
                     <div key={item.id} style={pg.itemRow}>
                       <div style={{ flex: 1 }}>
                         <div style={{ fontWeight: 600, fontSize: 13, color: '#1a1a1a' }}>{i+1}. {item.medicine_name}</div>
-                        <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
-                          {item.dosage && `${item.dosage} · `}{item.frequency} · {item.duration} · Qty: {item.quantity}
-                        </div>
+                        <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>{item.dosage && `${item.dosage} · `}{item.frequency} · {item.duration} · Qty: {item.quantity}</div>
                       </div>
                       <button onClick={() => removeRxItem(item.id)} style={pg.removeBtn}>✕</button>
                     </div>
                   ))}
                 </div>
               )}
-
-              {!rxItems.length && (
-                <div style={{ textAlign: 'center', padding: '20px', color: '#aaa', fontSize: 13, background: '#f8f9fa', borderRadius: 8 }}>
-                  No medicines added yet
-                </div>
-              )}
+              {!rxItems.length && <div style={{ textAlign: 'center', padding: '20px', color: '#aaa', fontSize: 13, background: '#f8f9fa', borderRadius: 8 }}>No medicines added yet</div>}
             </div>
-
-            {/* Notes */}
             <div style={pg.section}>
-              <div style={pg.field}>
-                <label style={pg.label}>Additional Notes</label>
-                <textarea style={{ ...pg.input, height: 70, resize: 'vertical' }} value={form.notes} onChange={e => setForm(f => ({...f, notes: e.target.value}))} placeholder="Special instructions, allergies, etc." />
-              </div>
+              <div style={pg.field}><label style={pg.label}>Additional Notes</label><textarea style={{ ...pg.input, height: 70, resize: 'vertical' }} value={form.notes} onChange={e => setForm(f => ({...f, notes: e.target.value}))} placeholder="Special instructions, allergies, etc." /></div>
             </div>
-
             <div style={pg.modalFooter}>
               <button onClick={() => setShowModal(false)} style={pg.cancelBtn}>Cancel</button>
-              <button onClick={handleSave} disabled={saving} style={pg.saveBtn}>
-                {saving ? 'Saving...' : 'Save Prescription'}
-              </button>
+              <button onClick={handleSave} disabled={saving} style={pg.saveBtn}>{saving ? 'Saving...' : 'Save Prescription'}</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* View Prescription Modal */}
       {viewRx && (
         <div style={pg.overlay} onClick={e => e.target === e.currentTarget && setViewRx(null)}>
           <div style={{ ...pg.modal, maxWidth: 600 }}>
@@ -432,13 +332,11 @@ export default function Prescriptions() {
               </div>
               <button onClick={() => setViewRx(null)} style={pg.closeBtn}>✕</button>
             </div>
-
             {viewRx.is_controlled && (
               <div style={{ background: '#fdf0f0', border: '1px solid #f5c6c6', borderRadius: 8, padding: '10px 14px', marginBottom: 16, color: '#c0392b', fontWeight: 600, fontSize: 13 }}>
                 ⚠️ This prescription contains CONTROLLED / NARCOTIC drugs. Handle with care.
               </div>
             )}
-
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
               <div style={pg.infoCard}>
                 <div style={pg.infoCardTitle}>👤 Patient</div>
@@ -453,7 +351,6 @@ export default function Prescriptions() {
                 {viewRx.diagnosis && <div style={pg.infoRow}><span>Diagnosis</span><strong>{viewRx.diagnosis}</strong></div>}
               </div>
             </div>
-
             <div style={pg.infoCard}>
               <div style={pg.infoCardTitle}>📅 Dates</div>
               <div style={{ display: 'flex', gap: 24 }}>
@@ -461,7 +358,6 @@ export default function Prescriptions() {
                 <div style={pg.infoRow}><span>Expires</span><strong style={{ color: viewRx.expiry_date < today() ? '#ef4444' : '#333' }}>{viewRx.expiry_date}</strong></div>
               </div>
             </div>
-
             <div style={{ ...pg.infoCard, marginTop: 12 }}>
               <div style={pg.infoCardTitle}>💊 Prescribed Medicines</div>
               {viewRx.prescription_items?.map((item, i) => (
@@ -473,25 +369,20 @@ export default function Prescriptions() {
                     {item.duration  && <span style={pg.tag}>📅 {item.duration}</span>}
                     <span style={pg.tag}>Qty: {item.quantity}</span>
                   </div>
-                  {item.notes && <div style={{ fontSize: 11, color: '#888', marginTop: 4 }}>Note: {item.notes}</div>}
                 </div>
               ))}
             </div>
-
             {viewRx.notes && (
               <div style={{ ...pg.infoCard, marginTop: 12 }}>
                 <div style={pg.infoCardTitle}>📝 Notes</div>
                 <p style={{ fontSize: 13, color: '#555', margin: 0 }}>{viewRx.notes}</p>
               </div>
             )}
-
             <div style={pg.modalFooter}>
               {viewRx.status === 'Active' && (
                 <>
                   <button onClick={() => { updateStatus(viewRx.id, 'Dispensed'); setViewRx(null); }} style={pg.saveBtn}>✅ Mark as Dispensed</button>
-                  <button onClick={() => { updateStatus(viewRx.id, 'Partially Dispensed'); setViewRx(null); }} style={{ ...pg.cancelBtn, background: '#fff8e6', color: '#b07d00', border: '1px solid #fde68a' }}>
-                    Partially Dispensed
-                  </button>
+                  <button onClick={() => { updateStatus(viewRx.id, 'Partially Dispensed'); setViewRx(null); }} style={{ ...pg.cancelBtn, background: '#fff8e6', color: '#b07d00', border: '1px solid #fde68a' }}>Partially Dispensed</button>
                 </>
               )}
               <button onClick={() => setViewRx(null)} style={pg.cancelBtn}>Close</button>
@@ -503,7 +394,6 @@ export default function Prescriptions() {
   );
 }
 
-// ─── Styles ──────────────────────────────────────────────────
 const pg = {
   root:        { padding: '28px', maxWidth: 1200, margin: '0 auto' },
   header:      { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
