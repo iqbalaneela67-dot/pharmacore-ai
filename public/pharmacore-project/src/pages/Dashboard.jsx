@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { Chart, registerables } from 'chart.js';
 import { supabase } from '../lib/supabase';
+import useStore from '../lib/store'
 Chart.register(...registerables);
 
 function getMedStatus(m) {
@@ -85,23 +86,18 @@ export default function Dashboard() {
   const [db, setDb] = useState({ sales: [], purchases: [], medicines: [] });
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetchAll() {
-      setLoading(true);
-      const [{ data: sales }, { data: purchases }, { data: medicines }] = await Promise.all([
-        supabase.from('sales').select('*'),
-        supabase.from('purchases').select('*'),
-        supabase.from('medicines').select('*'),
-      ]);
-      setDb({
-        sales: sales || [],
-        purchases: purchases || [],
-        medicines: medicines || [],
-      });
-      setLoading(false);
-    }
-    fetchAll();
-  }, []);
+  const { medicines, sales, purchases, fetchAll: fetchAllData, loading: storeLoading } = useStore()
+
+useEffect(() => {
+  fetchAllData()
+}, [])
+
+useEffect(() => {
+  setDb({ medicines, sales, purchases })
+  if (!storeLoading.medicines && !storeLoading.sales && !storeLoading.purchases) {
+    setLoading(false)
+  }
+}, [medicines, sales, purchases, storeLoading])
 
   const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
   const rangeDays = useMemo(() => parseInt(range) || 7, [range]);
