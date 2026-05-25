@@ -1,5 +1,4 @@
 // src/hooks/useDatabase.js
-// Real-time database hook - replaces static initialDB
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../utils/supabaseClient';
 
@@ -41,7 +40,6 @@ export function useDatabase() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
 
-  // ── Initial fetch ──────────────────────────────────────────────────
   const fetchAll = useCallback(async () => {
     try {
       const [medsRes, salesRes, purRes, billsRes] = await Promise.all([
@@ -78,40 +76,15 @@ export function useDatabase() {
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // ── Real-time subscriptions ────────────────────────────────────────
-  useEffect(() => {
-    const medSub = supabase.channel('medicines-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'medicines' }, () => fetchAll())
-      .subscribe();
-
-    const saleSub = supabase.channel('sales-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'sales' }, () => fetchAll())
-      .subscribe();
-
-    const purSub = supabase.channel('purchases-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'purchases' }, () => fetchAll())
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(medSub);
-      supabase.removeChannel(saleSub);
-      supabase.removeChannel(purSub);
-    };
-  }, [fetchAll]);
-
-  // ── updateDB: Supabase-powered ─────────────────────────────────────
   const updateDB = useCallback(async (updater) => {
-    // Apply locally first (optimistic update)
     setDb(prev => {
       const next = JSON.parse(JSON.stringify(prev));
       updater(next);
       return next;
     });
-    // Then sync to Supabase
     await fetchAll();
   }, [fetchAll]);
 
-  // ── DB API methods ─────────────────────────────────────────────────
   const addSale = useCallback(async (sale) => {
     const { error } = await supabase.from('sales').insert({
       invoice: sale.invoice, date: sale.date, patient: sale.patient,
@@ -119,7 +92,6 @@ export function useDatabase() {
       discount: sale.discount || 0, status: sale.status || 'Paid',
     });
     if (error) throw error;
-    // Update medicine qty
     const med = db.medicines.find(m => m.id === sale.medId);
     if (med) {
       await supabase.from('medicines').update({ qty: med.qty - sale.qty }).eq('id', sale.medId);

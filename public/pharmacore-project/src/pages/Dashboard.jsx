@@ -1,8 +1,7 @@
 /* eslint-disable */
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import { Chart, registerables } from 'chart.js';
-import { supabase } from '../lib/supabase';
-import useStore from '../lib/store'
+import { useDatabase } from '../hooks/useDatabase';
 Chart.register(...registerables);
 
 function getMedStatus(m) {
@@ -86,24 +85,27 @@ export default function Dashboard() {
   const [db, setDb] = useState({ sales: [], purchases: [], medicines: [] });
   const [loading, setLoading] = useState(true);
 
-  const { medicines, sales, purchases, fetchAll: fetchAllData, loading: storeLoading } = useStore()
+  const { db: dbData, loading: storeLoading, updateDB } = useDatabase();
+const medicines = dbData?.medicines || [];
+const sales = dbData?.sales || [];
+const purchases = dbData?.purchases || [];
+const fetchAllData = () => {};
 
-useEffect(() => {
-  fetchAllData()
-}, [])
+  useEffect(() => {
+    fetchAllData();
+  }, []);
 
-useEffect(() => {
-  setDb({ medicines, sales, purchases })
-  if (!storeLoading.medicines && !storeLoading.sales && !storeLoading.purchases) {
-    setLoading(false)
-  }
-}, [medicines, sales, purchases, storeLoading])
+  useEffect(() => {
+    setDb({ medicines, sales, purchases });
+    if (!storeLoading.medicines && !storeLoading.sales && !storeLoading.purchases) {
+      setLoading(false);
+    }
+  }, [medicines, sales, purchases, storeLoading]);
 
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
-  const rangeDays = useMemo(() => parseInt(range) || 7, [range]);
-  const rangeStart = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - rangeDays);
+  const todayStr      = useMemo(() => new Date().toISOString().split('T')[0], []);
+  const rangeDays     = useMemo(() => parseInt(range) || 7, [range]);
+  const rangeStart    = useMemo(() => {
+    const d = new Date(); d.setDate(d.getDate() - rangeDays);
     return d.toISOString().split('T')[0];
   }, [rangeDays]);
 
@@ -123,9 +125,8 @@ useEffect(() => {
   const receivedPO    = useMemo(() => db.purchases.filter(p => p.status === 'Received').length, [db]);
   const todayTxns     = useMemo(() => db.sales.filter(s => s.date === todayStr).length, [db, todayStr]);
 
-  const prevStart = useMemo(() => {
-    const d = new Date();
-    d.setDate(d.getDate() - rangeDays * 2);
+  const prevStart    = useMemo(() => {
+    const d = new Date(); d.setDate(d.getDate() - rangeDays * 2);
     return d.toISOString().split('T')[0];
   }, [rangeDays]);
   const prevSalesAmt = useMemo(() => db.sales.filter(s => s.date >= prevStart && s.date < rangeStart).reduce((a, s) => a + (s.total || 0), 0), [db, prevStart, rangeStart]);
@@ -140,7 +141,7 @@ useEffect(() => {
         lbl: rangeDays <= 7
           ? d.toLocaleDateString('en-PK', { weekday: 'short' })
           : d.toLocaleDateString('en-PK', { month: 'short', day: 'numeric' }),
-        sales: db.sales.filter(s => s.date === ds).reduce((a, s) => a + (s.total || 0), 0),
+        sales:     db.sales.filter(s => s.date === ds).reduce((a, s) => a + (s.total || 0), 0),
         purchases: db.purchases.filter(p => p.date === ds).reduce((a, p) => a + (p.total || 0), 0),
       });
     }
@@ -199,17 +200,17 @@ useEffect(() => {
     return () => { salesInst.current?.destroy(); catInst.current?.destroy(); };
   }, [db, chartData, loading]);
 
-  const alerts = db.medicines.filter(m => getMedStatus(m) !== 'In Stock').slice(0, 8);
-  const recent = [...db.sales].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 6);
+  const alerts  = db.medicines.filter(m => getMedStatus(m) !== 'In Stock').slice(0, 8);
+  const recent  = [...db.sales].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 6);
   const topMeds = useMemo(() => {
     const map = {};
     rangeSales.forEach(s => { map[s.med_id || s.medId] = (map[s.med_id || s.medId] || 0) + (s.total || 0); });
     return Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 5)
       .map(([id, rev]) => ({ med: db.medicines.find(m => m.id === +id || m.id === id), rev })).filter(x => x.med);
   }, [db, rangeSales]);
-  const maxRev = topMeds[0]?.rev || 1;
-  const avPal  = ['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ef4444','#06b6d4'];
-  const aClr   = { Expired: '#ef4444', 'Low Stock': '#f59e0b', 'Expiring Soon': '#06b6d4' };
+  const maxRev  = topMeds[0]?.rev || 1;
+  const avPal   = ['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ef4444','#06b6d4'];
+  const aClr    = { Expired: '#ef4444', 'Low Stock': '#f59e0b', 'Expiring Soon': '#06b6d4' };
   const timeStr = clock.toLocaleTimeString('en-PK', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   if (loading) return (
@@ -323,14 +324,14 @@ useEffect(() => {
         </div>
 
         <div className="kpi-grid">
-          <KPICard index={0} label="Today's Sales"       rawValue={todaySales}    prefix="PKR " sub={`${todayTxns} transactions today`}     subType="mute" icon="💊" accent="#10b981" trend={salesTrend} />
-          <KPICard index={1} label={`Revenue (${range})`} rawValue={rangeSalesAmt} prefix="PKR " sub={`${rangeSales.length} transactions`}    subType="mute" icon="💰" accent="#3b82f6" trend={salesTrend} />
-          <KPICard index={2} label="Inventory Value"      rawValue={totalInv}      prefix="PKR " sub={`${db.medicines.length} medicines`}      subType="mute" icon="📦" accent="#8b5cf6" />
-          <KPICard index={3} label={`Net Profit (${range})`} rawValue={profit}     prefix="PKR " sub={`${margin}% margin`}                    subType={profit >= 0 ? 'up' : 'down'} icon="📈" accent={profit >= 0 ? '#10b981' : '#ef4444'} trend={+margin.toFixed(0)} />
-          <KPICard index={4} label={`Purchases (${range})`} rawValue={rangePurchAmt} prefix="PKR " sub={`${rangePurch.length} orders`}        subType="mute" icon="🛒" accent="#f59e0b" />
-          <KPICard index={5} label="Avg Sale Value"       rawValue={avgSale}       prefix="PKR " sub={`Per transaction (${range})`}           subType="mute" icon="🧾" accent="#06b6d4" />
-          <KPICard index={6} label="Low Stock"            rawValue={lowStock}      sub={lowStock > 0 ? 'Reorder required' : 'All stocked'}    subType={lowStock > 0 ? 'down' : 'up'} icon="⚠️" accent={lowStock > 0 ? '#f59e0b' : '#10b981'} />
-          <KPICard index={7} label="Expired Items"        rawValue={expired}       sub={expired > 0 ? 'Remove immediately' : 'No expired'}    subType={expired > 0 ? 'down' : 'up'} icon="🗑️" accent={expired > 0 ? '#ef4444' : '#10b981'} />
+          <KPICard index={0} label="Today's Sales"         rawValue={todaySales}    prefix="PKR " sub={`${todayTxns} transactions today`}   subType="mute" icon="💊" accent="#10b981" trend={salesTrend} />
+          <KPICard index={1} label={`Revenue (${range})`}  rawValue={rangeSalesAmt} prefix="PKR " sub={`${rangeSales.length} transactions`}  subType="mute" icon="💰" accent="#3b82f6" trend={salesTrend} />
+          <KPICard index={2} label="Inventory Value"       rawValue={totalInv}      prefix="PKR " sub={`${db.medicines.length} medicines`}   subType="mute" icon="📦" accent="#8b5cf6" />
+          <KPICard index={3} label={`Net Profit (${range})`} rawValue={profit}      prefix="PKR " sub={`${margin}% margin`}                  subType={profit >= 0 ? 'up' : 'down'} icon="📈" accent={profit >= 0 ? '#10b981' : '#ef4444'} trend={+margin.toFixed(0)} />
+          <KPICard index={4} label={`Purchases (${range})`} rawValue={rangePurchAmt} prefix="PKR " sub={`${rangePurch.length} orders`}       subType="mute" icon="🛒" accent="#f59e0b" />
+          <KPICard index={5} label="Avg Sale Value"         rawValue={avgSale}       prefix="PKR " sub={`Per transaction (${range})`}        subType="mute" icon="🧾" accent="#06b6d4" />
+          <KPICard index={6} label="Low Stock"              rawValue={lowStock}      sub={lowStock > 0 ? 'Reorder required' : 'All stocked'} subType={lowStock > 0 ? 'down' : 'up'} icon="⚠️" accent={lowStock > 0 ? '#f59e0b' : '#10b981'} />
+          <KPICard index={7} label="Expired Items"          rawValue={expired}       sub={expired > 0 ? 'Remove immediately' : 'No expired'} subType={expired > 0 ? 'down' : 'up'} icon="🗑️" accent={expired > 0 ? '#ef4444' : '#10b981'} />
         </div>
 
         <div className="ai-row">
@@ -362,9 +363,9 @@ useEffect(() => {
         <div className="mini-row">
           {[
             { val: rangeSales.length,   lbl: `Invoices (${range})`, a: '#10b981' },
-            { val: receivedPO,          lbl: 'POs Received',         a: '#3b82f6' },
-            { val: pendingPO,           lbl: 'POs Pending',          a: '#f59e0b' },
-            { val: db.medicines.length, lbl: 'Total Medicines',      a: '#8b5cf6' },
+            { val: receivedPO,          lbl: 'POs Received',        a: '#3b82f6' },
+            { val: pendingPO,           lbl: 'POs Pending',         a: '#f59e0b' },
+            { val: db.medicines.length, lbl: 'Total Medicines',     a: '#8b5cf6' },
           ].map((s, i) => (
             <div key={i} className="mini-box" style={{ '--a': s.a }}>
               <div className="mini-val">{s.val}</div>
