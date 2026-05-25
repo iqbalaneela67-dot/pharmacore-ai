@@ -1,11 +1,11 @@
-import React from 'react';
+﻿import React from 'react';
 import { exportToCSV, Empty } from '../components/ui';
 import { formatPKR } from '../data/db';
 
 export default function Returns({ db }) {
   const allReturns = [
-    ...db.saleReturns.map(r => ({ ...r, type: 'Sale Return', ref: r.invoice, effect: `+${r.qty}`, effectColor: 'var(--success)' })),
-    ...db.purchaseReturns.map(r => ({ ...r, type: 'Purchase Return', ref: r.po, effect: `-${r.qty}`, effectColor: 'var(--danger)' })),
+    ...(db.saleReturns||[]).map(r => ({ ...r, type: 'Sale Return', ref: r.invoice, effect: `+${r.qty}`, effectColor: 'var(--success)' })),
+    ...(db.purchaseReturns||[]).map(r => ({ ...r, type: 'Purchase Return', ref: r.po, effect: `-${r.qty}`, effectColor: 'var(--danger)' })),
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
   const handleExport = () => {
@@ -16,19 +16,19 @@ export default function Returns({ db }) {
     );
   };
 
-  const totalSaleRefunds = db.saleReturns.reduce((a, r) => a + r.refund, 0);
+  const totalSaleRefunds = (db.saleReturns||[]).reduce((a, r) => a + r.refund, 0);
 
   return (
     <div>
       <div className="metric-grid" style={{ marginBottom: 20 }}>
         <div className="metric-card">
           <div className="metric-label">Sale Returns</div>
-          <div className="metric-value">{db.saleReturns.length}</div>
+          <div className="metric-value">{(db.saleReturns||[]).length}</div>
           <div className="metric-sub metric-up">Stock increased</div>
         </div>
         <div className="metric-card">
           <div className="metric-label">Purchase Returns</div>
-          <div className="metric-value">{db.purchaseReturns.length}</div>
+          <div className="metric-value">{(db.purchaseReturns||[]).length}</div>
           <div className="metric-sub metric-down">Stock decreased</div>
         </div>
         <div className="metric-card">
@@ -79,3 +79,4 @@ export default function Returns({ db }) {
     </div>
   );
 }
+
