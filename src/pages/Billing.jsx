@@ -1,4 +1,4 @@
-/* eslint-disable */
+﻿/* eslint-disable */
 /* eslint-disable */
 import React, { useState, useEffect } from 'react';
 import { today, padId, formatPKR, getMedStatus, PAYMENT_MODES } from '../data/db';
@@ -9,7 +9,7 @@ export default function Billing({ db, updateDB, openScanner, scannedMed, setScan
   const [patient, setPatient] = useState('');
   const [phone, setPhone] = useState('');
   const [doctor, setDoctor] = useState('');
-  const [billDate, setBillDate] = useState(today());
+  const [billDate, setBillDate] = useState(today);
   const [discount, setDiscount] = useState(0);
   const [payment, setPayment] = useState('Cash');
   const [items, setItems] = useState([]);
@@ -71,7 +71,7 @@ export default function Billing({ db, updateDB, openScanner, scannedMed, setScan
     });
     setPrintBill(bill);
     // Clear form
-    setPatient(''); setPhone(''); setDoctor(''); setDiscount(0); setItems([]); setBillDate(today());
+    setPatient(''); setPhone(''); setDoctor(''); setDiscount(0); setItems([]); setBillDate(today);
   };
 
   return (
@@ -100,7 +100,7 @@ export default function Billing({ db, updateDB, openScanner, scannedMed, setScan
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px auto', gap: 8, marginBottom: 14 }}>
               <select value={selMedId} onChange={e => setSelMedId(e.target.value)}>
                 <option value="">Select medicine...</option>
-                {availableMeds.map(m => <option key={m.id} value={m.id}>{m.name} — PKR {m.mrp} (Stock: {m.qty})</option>)}
+                {availableMeds.map(m => <option key={m.id} value={m.id}>{m.name} â€” PKR {m.mrp} (Stock: {m.qty})</option>)}
               </select>
               <input type="number" min="1" value={selQty} onChange={e => setSelQty(+e.target.value)} placeholder="Qty" />
               <button className="btn btn-primary" onClick={() => selMedId && addItem(selMedId)}>
@@ -146,7 +146,7 @@ export default function Billing({ db, updateDB, openScanner, scannedMed, setScan
             <div style={{ minHeight: 80, marginBottom: 12 }}>
               {items.map(item => (
                 <div key={item.medId} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '3px 0' }}>
-                  <span style={{ color: 'var(--text-secondary)' }}>{item.name} ×{item.qty}</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{item.name} Ã—{item.qty}</span>
                   <span>PKR {item.total}</span>
                 </div>
               ))}
@@ -195,7 +195,7 @@ export default function Billing({ db, updateDB, openScanner, scannedMed, setScan
               <tr key={b.id}>
                 <td><b>{b.invoice}</b></td>
                 <td>{b.patient}</td>
-                <td>{b.doctor || '—'}</td>
+                <td>{b.doctor || 'â€”'}</td>
                 <td>{b.date}</td>
                 <td>{b.items.length} items</td>
                 <td style={{ fontWeight: 600 }}>{formatPKR(b.total)}</td>
@@ -215,4 +215,5 @@ export default function Billing({ db, updateDB, openScanner, scannedMed, setScan
     </div>
   );
 }
+
 
