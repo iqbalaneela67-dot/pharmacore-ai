@@ -1,4 +1,4 @@
-/* eslint-disable */
+﻿/* eslint-disable */
 import React, { useState } from 'react';
 import './index.css';
 import { getMedStatus } from './data/db';
@@ -17,7 +17,7 @@ import Reports from './pages/Reports';
 import Prescriptions from './pages/Prescriptions';
 import Patients from './pages/Patients';
 
-import Login from './Login';
+import Login from './pages/Login';
 import ScannerModal from './components/ScannerModal';
 import { ToastContainer } from './components/AlertSystem';
 
@@ -26,7 +26,7 @@ function LoadingScreen() {
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center',
       justifyContent:'center', height:'100vh', background:'#0a0f1e',
       color:'#10b981', fontFamily:'sans-serif', gap:16 }}>
-      <div style={{ fontSize:40 }}>💊</div>
+      <div style={{ fontSize:40 }}>ðŸ’Š</div>
       <div style={{ fontSize:20, fontWeight:700 }}>PharmaCore AI</div>
       <div style={{ fontSize:13, color:'#475569' }}>Loading live data...</div>
     </div>
@@ -37,7 +37,7 @@ function ErrorScreen({ error, onRetry }) {
   return (
     <div style={{ display:'flex', flexDirection:'column', alignItems:'center',
       justifyContent:'center', height:'100vh', background:'#0a0f1e', color:'#f1f5f9' }}>
-      <div style={{ fontSize:40 }}>⚠️</div>
+      <div style={{ fontSize:40 }}>âš ï¸</div>
       <div style={{ fontWeight:700 }}>Database Error</div>
       <div style={{ fontSize:12, color:'#64748b', maxWidth:320, textAlign:'center' }}>{error}</div>
       <button onClick={onRetry} style={{ marginTop:12, padding:'10px 24px',
@@ -107,7 +107,7 @@ export default function App() {
       <Sidebar page={page} setPage={setPage} onLogout={handleLogout} />
       <div className="main">
         <Topbar page={page} db={db} updateDB={updateDB}
-          openScanner={openScanner} lowStockCount={lowStockCount} />
+          openScanner={openScanner} lowStockCount={lowStockCount} user={JSON.parse(localStorage.getItem('pharmacore_user')||'{}')} onLogout={handleLogout} />
         <div className="content">
           <PageComponent
             db={db}
@@ -134,3 +134,5 @@ export default function App() {
     </div>
   );
 }
+
+
