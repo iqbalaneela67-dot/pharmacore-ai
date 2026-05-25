@@ -12,6 +12,8 @@ const NAV = [
     { id: 'billing', icon: 'ti-receipt', label: 'Billing' },
   ]},
   { section: 'Reports', items: [
+    { id: 'prescriptions', icon: 'ti-file-text', label: 'Prescriptions' },
+    { id: 'patients', icon: 'ti-users', label: 'Patients' },
     { id: 'returns', icon: 'ti-arrow-back', label: 'Returns' },
     { id: 'reports', icon: 'ti-chart-bar', label: 'Reports' },
   ]},
